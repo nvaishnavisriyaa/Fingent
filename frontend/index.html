@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Fingent — agentic platform for financial services</title>
+<style>
+  :root{--bg:#0b1020;--panel:#141a2e;--panel2:#1c2440;--ink:#e8ecf8;--mut:#8b95b5;
+        --acc:#5b8cff;--ok:#2fbf8f;--warn:#f2b13c;--bad:#ff6b6b;--line:#27304f}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--ink)}
+  header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;background:#0d1428;position:sticky;top:0;z-index:5}
+  header h1{font-size:17px;margin:0;letter-spacing:.3px}
+  header .tag{color:var(--mut);font-size:12px}
+  .tenant{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .tenant select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  nav{display:flex;gap:6px;padding:10px 18px;border-bottom:1px solid var(--line);background:#0d1428;flex-wrap:wrap}
+  nav button{background:transparent;border:1px solid transparent;color:var(--mut);padding:7px 13px;border-radius:8px;cursor:pointer;font-size:13px}
+  nav button.active{background:var(--panel2);color:var(--ink);border-color:var(--line)}
+  main{padding:22px;max-width:1180px;margin:0 auto}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .card h3{margin:0 0 4px;font-size:15px}
+  .card .desc{color:var(--mut);font-size:12.5px;min-height:34px}
+  .pill{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;background:var(--panel2);color:var(--mut);border:1px solid var(--line)}
+  .pill.t1{color:#9fd0ff}.pill.t2{color:#ffd9a3}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  label{display:block;margin:12px 0 5px;font-size:12.5px;color:var(--mut)}
+  input,select,textarea{width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit}
+  textarea{resize:vertical}
+  .freetext{border:1px dashed var(--acc);border-radius:11px;padding:12px;margin-top:14px;background:rgba(91,140,255,.06)}
+  .freetext label{color:var(--acc);font-weight:600;margin-top:0}
+  button.act{background:var(--acc);border:none;color:white;padding:10px 16px;border-radius:9px;cursor:pointer;font-weight:600}
+  button.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--ink);padding:9px 14px;border-radius:9px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .muted{color:var(--mut)}
+  pre{background:#0a0f1f;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;font-size:12px;max-height:360px}
+  .note{border-radius:11px;padding:13px;margin:12px 0}
+  .note.warn{background:rgba(242,177,60,.1);border:1px solid var(--warn)}
+  .note.ok{background:rgba(47,191,143,.1);border:1px solid var(--ok)}
+  .note.bad{background:rgba(255,107,107,.1);border:1px solid var(--bad)}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:12.5px}
+  .kv b{color:var(--mut);font-weight:500}
+  .tool{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);margin:2px 4px 2px 0;display:inline-block}
+  .tool.web{border-color:#3a6}.tool.mcp{border-color:#a6f;color:#d9bcff}.tool.native{color:#bcd}
+  .strip{color:var(--bad);font-size:12px}
+  .span{border-left:2px solid var(--line);margin:4px 0 4px 8px;padding:4px 0 4px 12px}
+  .span .h{font-size:12.5px}
+  .badge{font-size:10.5px;padding:1px 7px;border-radius:6px;margin-left:6px}
+  .badge.tool{background:#243; color:#9f8}.badge.agent{background:#234;color:#9cf}
+  .badge.hitl{background:#432;color:#fc9}.badge.planner{background:#323;color:#caf}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:500}
+  .small{font-size:12px}
+  a.link{color:var(--acc);cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+  <h1>⬡ Fingent</h1><span class="tag">reusable agentic platform · financial services</span>
+  <div class="tenant"><span class="muted small">tenant</span>
+    <select id="tenant"><option>acme</option><option>globex</option><option>initech</option></select>
+  </div>
+</header>
+<nav>
+  <button data-view="catalog" class="active">Catalog</button>
+  <button data-view="agents">My agents</button>
+  <button data-view="mcp">MCP servers</button>
+  <button data-view="traces">Trace inspector</button>
+  <button data-view="compiler">Compiler log</button>
+  <button data-view="audit">Audit trail</button>
+</nav>
+<main id="main"></main>
+
+<script>
+const api = (p,o={}) => fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','X-Tenant':tenant(),...(o.headers||{})}}).then(r=>r.json());
+const tenant = () => document.getElementById('tenant').value;
+const el = (h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstElementChild;};
+const esc = (s)=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+let STATE={view:'catalog',template:null};
+
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); STATE.view=b.dataset.view; render();
+});
+document.getElementById('tenant').onchange=render;
+
+async function render(){
+  const m=document.getElementById('main'); m.innerHTML='<p class="muted">Loading…</p>';
+  if(STATE.view==='catalog') return renderCatalog(m);
+  if(STATE.view==='form') return renderForm(m);
+  if(STATE.view==='agents') return renderAgents(m);
+  if(STATE.view==='mcp') return renderMcp(m);
+  if(STATE.view==='traces') return renderTraces(m);
+  if(STATE.view==='compiler') return renderCompiler(m);
+  if(STATE.view==='audit') return renderAudit(m);
+}
+
+async function renderCatalog(m){
+  const tpls=await api('/templates');
+  m.innerHTML='<h2>Template catalog <span class="muted small">— pick a template, fill the form, the LLM compiles the agent</span></h2>';
+  for(const tier of [1,2]){
+    m.appendChild(el(`<h3 class="muted">Tier ${tier} ${tier===1?'· GTM customer discovery':'· FS operational'}</h3>`));
+    const g=el('<div class="grid"></div>');
+    tpls.filter(t=>t.tier===tier).forEach(t=>{
+      const c=el(`<div class="card"><div class="row"><span class="pill t${tier}">tier ${tier}</span>
+        ${t.default_depends_on.length?`<span class="pill">depends: ${t.default_depends_on.map(d=>d.agent+'·'+d.type).join(', ')}</span>`:''}</div>
+        <h3>${esc(t.name)}</h3><div class="desc">${esc(t.description)}</div>
+        <button class="act">Create from this</button></div>`);
+      c.querySelector('button').onclick=()=>{STATE.template=t.name;STATE.view='form';render();};
+      g.appendChild(c);
+    });
+    m.appendChild(g);
+  }
+  const scratch=el('<div class="card" style="margin-top:16px;border-style:dashed"><h3>Build from scratch</h3><div class="desc">No template fits? Describe the agent in free-text; the LLM builds it and the platform stores it as a new template.</div><button class="ghost">Build from scratch</button></div>');
+  scratch.querySelector('button').onclick=()=>{STATE.template=null;STATE.view='form';render();};
+  m.appendChild(scratch);
+}
+
+async function renderForm(m){
+  const name=STATE.template;
+  let schema={parameters:[],free_text_field:{label:'Additional / specific requirements',name:'additional_requirements',placeholder:'Describe anything special…'},description:'Build a brand-new agent from scratch.',template:null,tier:2};
+  if(name) schema=await api('/templates/'+name+'/form');
+  m.innerHTML=`<a class="link" onclick="STATE.view='catalog';render()">&larr; catalog</a>
+    <h2>${name?'New '+esc(name)+' agent':'New agent (from scratch)'}</h2>
+    <p class="muted">${esc(schema.description||'')}</p>`;
+  const form=el('<div class="card"></div>');
+  form.appendChild(el('<label>Agent name</label>'));
+  const nameI=el('<input id="f_name" placeholder="my_agent"/>'); form.appendChild(nameI);
+  schema.parameters.filter(p=>p.name!=='name').forEach(p=>{
+    form.appendChild(el(`<label>${esc(p.label)}${p.required?' *':''}</label>`));
+    let f;
+    if(p.type==='number'){f=el(`<input type="number" min="${p.min??''}" max="${p.max??''}" step="0.01" value="${p.default??''}"/>`);}
+    else if(p.type==='boolean'){f=el(`<select><option value="true">Yes</option><option value="false">No</option></select>`);f.value=String(p.default??false);}
+    else if(p.type==='select'){f=el('<select></select>');(p.options||[]).forEach(o=>f.appendChild(el(`<option ${o===p.default?'selected':''}>${esc(o)}</option>`)));}
+    else if(p.type==='multi_select'){f=el('<select multiple style="height:96px"></select>');(p.options||[]).forEach(o=>f.appendChild(el(`<option ${(p.default||[]).includes(o)?'selected':''}>${esc(o)}</option>`)));}
+    else{f=el(`<input value="${p.default??''}"/>`);}
+    f.dataset.pname=p.name; f.dataset.ptype=p.type; f.className='pfield'; form.appendChild(f);
+  });
+  const ft=el(`<div class="freetext"><label>${esc(schema.free_text_field.label)} — always the last field, LLM-interpreted (never string-merged)</label>
+    <textarea id="f_free" rows="5" placeholder="${esc(schema.free_text_field.placeholder)}"></textarea></div>`);
+  form.appendChild(ft);
+  form.appendChild(el('<label class="row"><input type="checkbox" id="f_side" style="width:auto"/> &nbsp;Operator approves side-effecting tools (write/send/pay)</label>'));
+  const btn=el('<button class="act" style="margin-top:14px">Create agent</button>');
+  form.appendChild(btn);
+  const out=el('<div id="out"></div>');
+  m.appendChild(form); m.appendChild(out);
+  btn.onclick=()=>submit(name,out,false);
+}
+
+function collectAnswers(){
+  const answers={name:document.getElementById('f_name').value||'my_agent'};
+  document.querySelectorAll('.pfield').forEach(f=>{
+    if(f.dataset.ptype==='multi_select') answers[f.dataset.pname]=[...f.selectedOptions].map(o=>o.value);
+    else if(f.dataset.ptype==='number') answers[f.dataset.pname]=parseFloat(f.value);
+    else if(f.dataset.ptype==='boolean') answers[f.dataset.pname]=f.value==='true';
+    else answers[f.dataset.pname]=f.value;
+  });
+  return answers;
+}
+
+async function submit(template,out,auto){
+  out.innerHTML='<p class="muted">Compiling agent with the LLM…</p>';
+  const body={template,answers:collectAnswers(),additional_requirements:document.getElementById('f_free').value,
+    approve_side_effecting:document.getElementById('f_side').checked,auto_provision:auto};
+  const r=await api('/agents',{method:'POST',body:JSON.stringify(body)});
+  renderResult(r,out,template);
+}
+
+function toolEl(t){const k=t.includes('.')?'mcp':(t==='web_search'?'web':'native');return `<span class="tool ${k}">${esc(t)}</span>`;}
+
+function renderResult(r,out,template){
+  if(r.stage==='input_validation'){
+    out.innerHTML=`<div class="note bad"><b>Rejected before the LLM was called.</b><br>${r.errors.map(esc).join('<br>')}</div>`;return;
+  }
+  if(r.needs_prerequisites){
+    out.innerHTML=`<div class="note warn"><b>Dependency required — create the prerequisite first.</b>
+      <div class="kv" style="margin-top:8px">${r.missing_hard.map(d=>`<b>${esc(d.agent)}</b><span>${esc(d.reason)} (hard)</span>`).join('')}</div>
+      <p class="small muted">Provisioning order: ${r.creation_order.map(esc).join(' → ')}</p>
+      <button class="act" id="prov">Create prerequisite chain now</button> <button class="ghost" id="cancel">Cancel</button></div>`;
+    out.querySelector('#prov').onclick=()=>submit(template,out,true);
+    out.querySelector('#cancel').onclick=()=>out.innerHTML='';
+    return;
+  }
+  if(r.stage==='dependency' && r.cycle){out.innerHTML=`<div class="note bad"><b>Dependency cycle rejected:</b> ${r.cycle.map(esc).join(' → ')}</div>`;return;}
+  if(!r.ok){out.innerHTML=`<div class="note bad"><b>Compile failed.</b> ${esc(r.message||'')}</div>`;return;}
+  const s=r.spec, cl=r.compiler_log||{}, strips=(cl.verdicts||[]).flatMap(v=>v.stripped||[]);
+  out.innerHTML=`<div class="note ok"><b>Agent compiled & validated.</b> ${r.used_llm?'(Groq/Llama)':'(deterministic compiler — set GROQ_API_KEY for Llama)'}
+      ${r.provisioned&&r.provisioned.length?`<br>Auto-provisioned prerequisites: ${r.provisioned.map(esc).join(', ')}`:''}
+      ${r.crystallized_template?`<br>Crystallized into a new template: <b>${esc(r.crystallized_template)}</b>`:''}</div>
+    <div class="card"><div class="kv">
+      <b>name</b><span>${esc(s.name)}</span>
+      <b>template</b><span>${esc(s.template||'(from scratch)')}</span>
+      <b>tier</b><span>${s.tier}</span>
+      <b>tools (granted)</b><span>${s.tools.map(toolEl).join('')||'<i class=muted>none</i>'}</span>
+      <b>human review</b><span>${s.requires_human_review?'required':'no'}</span>
+      <b>injection check</b><span>${s.guardrails.injection_check?'ON':'off'}</span>
+      <b>output review</b><span>${s.guardrails.output_review_required?'required':'no'}</span>
+    </div>
+    ${strips.length?`<div class="note warn" style="margin-top:10px"><b>Spec validator stripped/neutralized:</b><br>${strips.map(x=>'<span class="strip">• '+esc(x)+'</span>').join('<br>')}</div>`:''}
+    <details style="margin-top:10px"><summary class="muted">role prompt</summary><pre>${esc(s.role_prompt)}</pre></details>
+    <button class="act" id="runit" style="margin-top:12px">Run this agent</button></div>
+    <div id="runout"></div>`;
+  out.querySelector('#runit').onclick=async()=>{
+    const ro=out.querySelector('#runout'); ro.innerHTML='<p class="muted">Running…</p>';
+    const rr=await api('/run',{method:'POST',body:JSON.stringify({agents:[s.name]})});
+    renderRun(rr,ro);
+  };
+}
+
+function renderResults(bb){
+  const keys=Object.keys(bb||{});
+  if(!keys.length) return '<p class="muted">No output produced.</p>';
+  return keys.map(k=>{
+    const r=bb[k]||{}; const outs=r.outputs||{};
+    const tools=Object.entries(outs).map(([t,d])=>`<details open><summary class="muted">${esc(t)}</summary><pre>${esc(JSON.stringify(d,null,2))}</pre></details>`).join('');
+    return `<div class="card"><div class="row"><b>${esc(r.agent||k)}</b><span class="pill">${esc(k)}</span></div>${tools||'<span class="muted">—</span>'}</div>`;
+  }).join('');
+}
+function renderRun(rr,ro){
+  if(!rr || (rr.ok===false && !rr.metrics)){ro.innerHTML=`<div class="note bad">${esc((rr&&rr.message)||'Run failed — no enabled agent matched.')}</div>`;return;}
+  let h='';
+  if(rr.hitl_pause) h+=`<div class="note warn"><b>Paused at the human-review (HITL) gate</b> — ${esc(rr.hitl_pause.agent)} · compliance verdict ${esc(rr.hitl_pause.compliance.verdict)}. The result below is held pending your approval.<br><button class="act" id="approve" style="margin-top:8px">Approve &amp; release result</button></div>`;
+  if(rr.error) h+=`<div class="note bad"><b>${esc(rr.error.type)}</b> in ${esc(rr.error.agent)}: ${esc(rr.error.detail)}</div>`;
+  h+=`<h3 class="muted">Result</h3>`+renderResults(rr.blackboard);
+  h+=`<details style="margin-top:10px"><summary class="muted">run metrics &amp; trace</summary><div class="card"><div class="kv">
+    <b>trace</b><span><a class="link" onclick="openTrace('${rr.trace_id}')">${esc(rr.trace_id)}</a></span>
+    <b>executed</b><span>${(rr.executed||[]).map(esc).join(' → ')}</span>
+    <b>latency</b><span>${rr.metrics.latency_ms} ms</span>
+    <b>tokens / cost</b><span>${rr.metrics.tokens} tok · $${rr.metrics.cost_usd}</span>
+    <b>tool calls</b><span>${Object.entries(rr.metrics.tool_calls).map(([k,v])=>k+':'+v).join('  ')||'—'}</span>
+    <b>guardrail trips</b><span>${rr.metrics.guardrail_trips}</span>
+  </div></div></details>`;
+  ro.innerHTML=h;
+  const ap=ro.querySelector('#approve');
+  if(ap) ap.onclick=async()=>{await api('/hitl',{method:'POST',body:JSON.stringify({trace_id:rr.trace_id,decision:'approve'})});ap.outerHTML='<span class="pill" style="color:#2fbf8f">approved ✓ — result released</span>';};
+}
+
+window.openTrace=async(id)=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+  document.querySelector('[data-view=traces]').classList.add('active');
+  STATE.view='traces'; STATE.openTrace=id; render();
+};
+
+async function renderAgents(m){
+  const a=await api('/agents');
+  m.innerHTML='<h2>My agents <span class="muted small">— agents are data (saved specs), rebuilt on each run</span></h2>';
+  if(!a.length){m.appendChild(el('<p class="muted">No agents yet for this tenant. Create one from the catalog.</p>'));return;}
+  const g=el('<div class="grid"></div>');
+  a.forEach(s=>{const c=el(`<div class="card"><div class="row"><span class="pill t${s.tier}">tier ${s.tier}</span>
+    ${s.requires_human_review?'<span class="pill">HITL</span>':''}</div><h3>${esc(s.name)}</h3>
+    <div class="desc">${esc((s.role_prompt||'').slice(0,90))}…</div>
+    <div>${s.tools.map(toolEl).join('')}</div>
+    <button class="ghost" style="margin-top:8px">Run</button></div>`);
+    c.querySelector('button').onclick=async()=>{const rr=await api('/run',{method:'POST',body:JSON.stringify({agents:[s.name]})});
+      const ro=el('<div></div>');c.appendChild(ro);renderRun(rr,ro);};
+    g.appendChild(c);});
+  m.appendChild(g);
+  const wf=el('<button class="act" style="margin-top:16px">Run GTM tier-1 workflow (planner orchestrates)</button>');
+  wf.onclick=async()=>{const rr=await api('/run',{method:'POST',body:JSON.stringify({tier:1})});const ro=el('<div></div>');m.appendChild(ro);renderRun(rr,ro);};
+  m.appendChild(wf);
+}
+
+async function renderMcp(m){
+  const list=await api('/mcp');
+  m.innerHTML='<h2>MCP servers <span class="muted small">— tenant-scoped; admin approval makes tools grantable</span></h2>';
+  const form=el(`<div class="card"><label>Server name</label><input id="mname" value="acme_mcp"/>
+    <label>URL</label><input id="murl" value="https://mcp.acme.io"/>
+    <label class="row"><input type="checkbox" id="mappr" checked style="width:auto"/> &nbsp;approved</label>
+    <button class="act" style="margin-top:10px">Register MCP server</button></div>`);
+  form.querySelector('button').onclick=async()=>{
+    const r=await api('/mcp',{method:'POST',body:JSON.stringify({name:mname.value,url:murl.value,approved:mappr.checked,secrets_ref:['acme:bloomberg_api_key']})});
+    alert('Registered '+r.registered+' — tools added: '+(r.tools_added.join(', ')||'(none; approve first)'));render();};
+  m.appendChild(form);
+  if(list.length){const t=el('<table><tr><th>name</th><th>url</th><th>approved</th></tr></table>');
+    list.forEach(s=>t.appendChild(el(`<tr><td>${esc(s.name)}</td><td class="muted">${esc(s.url)}</td><td>${s.approved?'✓':'✗'}</td></tr>`)));
+    m.appendChild(el('<h3 class="muted">Registered</h3>'));m.appendChild(t);}
+}
+
+async function renderTraces(m){
+  if(STATE.openTrace){const tr=await api('/traces/'+STATE.openTrace);STATE.openTrace=null;return renderTraceDetail(m,tr);}
+  const list=await api('/traces');
+  m.innerHTML='<h2>Trace inspector</h2>';
+  if(!list.length){m.appendChild(el('<p class="muted">No runs yet.</p>'));return;}
+  const t=el('<table><tr><th>trace</th><th>executed</th><th>latency</th><th>tools</th><th>trips</th></tr></table>');
+  list.forEach(x=>{const r=el(`<tr><td><a class="link">${esc(x.trace_id)}</a></td><td>${(x.executed||[]).join(' → ')}</td>
+    <td>${x.metrics.latency_ms}ms</td><td>${Object.entries(x.metrics.tool_calls).map(([k,v])=>k+':'+v).join(' ')}</td><td>${x.metrics.guardrail_trips}</td></tr>`);
+    r.querySelector('a').onclick=()=>openTrace(x.trace_id);t.appendChild(r);});
+  m.appendChild(t);
+}
+
+function spanEl(s){
+  const d=el(`<div class="span"><div class="h"><span class="badge ${s.kind}">${s.kind}</span> ${esc(s.name)}
+    <span class="muted small"> ${s.latency_ms}ms ${s.attrs&&s.attrs.tool_kind?'· '+s.attrs.tool_kind:''}
+    ${s.attrs&&s.attrs.compliance?'· compliance:'+s.attrs.compliance.verdict:''}
+    ${s.attrs&&s.attrs.untrusted?'· untrusted':''}</span></div></div>`);
+  (s.children||[]).forEach(c=>d.appendChild(spanEl(c)));
+  return d;
+}
+
+function renderTraceDetail(m,tr){
+  m.innerHTML=`<a class="link" onclick="STATE.view='traces';render()">&larr; traces</a><h2>${esc(tr.trace_id)}</h2>
+    <div class="card"><div class="kv">
+    <b>executed (DAG)</b><span>${(tr.executed||[]).map(esc).join(' → ')}</span>
+    <b>latency</b><span>${tr.metrics.latency_ms} ms</span>
+    <b>tokens / cost</b><span>${tr.metrics.tokens} · $${tr.metrics.cost_usd}</span>
+    <b>tool calls by kind</b><span>${Object.entries(tr.metrics.tool_calls).map(([k,v])=>k+':'+v).join('  ')}</span>
+    <b>guardrail trips</b><span>${tr.metrics.guardrail_trips}</span>
+    <b>hitl pauses</b><span>${tr.metrics.hitl_pauses}</span></div></div>
+    <h3 class="muted">Span tree</h3><div class="card" id="spans"></div>
+    <h3 class="muted">Memory (blackboard)</h3><pre>${esc(JSON.stringify(tr.blackboard,null,2))}</pre>
+    <h3 class="muted">Structured run log</h3><pre>${esc(JSON.stringify(tr.run_logs,null,2))}</pre>`;
+  m.querySelector('#spans').appendChild(spanEl(tr.spans));
+}
+
+async function renderCompiler(m){
+  const logs=await api('/compiler-logs');
+  m.innerHTML='<h2>Compiler log <span class="muted small">— what the LLM proposed and what the validator disposed</span></h2>';
+  if(!logs.length){m.appendChild(el('<p class="muted">No compilations yet.</p>'));return;}
+  logs.slice().reverse().forEach(l=>{
+    const strips=(l.verdicts||[]).flatMap(v=>v.stripped||[]);
+    const warns=(l.verdicts||[]).flatMap(v=>v.warnings||[]);
+    m.appendChild(el(`<div class="card"><div class="row"><b>${esc(l.agent)}</b>
+      <span class="pill">${l.used_llm?'Groq/Llama':'deterministic'}</span><span class="pill">attempts: ${l.attempts}</span>
+      <span class="pill">${l.ok?'validated':'rejected'}</span></div>
+      ${strips.length?`<div class="note warn" style="margin-top:8px"><b>stripped:</b><br>${strips.map(x=>'• '+esc(x)).join('<br>')}</div>`:''}
+      ${warns.length?`<div class="small muted" style="margin-top:6px">${warns.map(esc).join(' · ')}</div>`:''}
+      <details style="margin-top:8px"><summary class="muted">candidate the LLM proposed</summary><pre>${esc(JSON.stringify(l.candidate_specs,null,2))}</pre></details></div>`));
+  });
+}
+
+async function renderAudit(m){
+  const a=await api('/audit');
+  m.innerHTML='<h2>Audit trail <span class="muted small">— append-only: who created/ran/approved what</span></h2>';
+  const t=el('<table><tr><th>time</th><th>actor</th><th>action</th><th>target</th><th>detail</th></tr></table>');
+  a.slice().reverse().forEach(r=>t.appendChild(el(`<tr><td class="small muted">${new Date(r.ts*1000).toLocaleTimeString()}</td>
+    <td>${esc(r.actor)}</td><td><b>${esc(r.action)}</b></td><td>${esc(r.target)}</td><td class="small muted">${esc((r.detail||'').slice(0,70))}</td></tr>`)));
+  m.appendChild(t);
+}
+render();
+</script>
+</body>
+</html>
