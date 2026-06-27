@@ -156,3 +156,98 @@ def test_dependency_cycle_rejected(fp):
 
 def test_no_code_change_catalog_is_config(fp):
     assert len(fp.templates()) >= 15
+
+
+# --------------------------------------------------------------------------- #
+# Regression tests for the hardening fixes
+# --------------------------------------------------------------------------- #
+def test_inter_agent_data_flow(fp):
+    """A downstream agent actually CONSUMES an upstream agent's output (#6)."""
+    mk(fp, "credit_underwriting",
+       {"name": "lg", "doc_types": ["financial_statements"], "risk_threshold": 0.7,
+        "requires_human_review": False}, auto_provision=True)
+    run = fp.run("acme", ["document_intelligence", "lg"])
+    cu = run["blackboard"]["credit_underwriting.out"]
+    assert "document_intelligence.out" in cu["consumed"]
+
+
+def test_memory_scope_no_read_all(fp):
+    """An LLM-proposed read-all (empty prefix) is reset to the canonical scope (#1)."""
+    import json
+    from fingent.validators import validate_spec
+    tpl = fp.store.get_template("servicing_support")
+    cand = {"name": "x", "template": "servicing_support", "tier": 2, "role_prompt": "r",
+            "tools": [], "reads": [""], "writes": ["other.out"], "depends_on": [],
+            "guardrails": {}}
+    spec, verdict = validate_spec(json.loads(json.dumps(cand)), tpl, fp.registry, "acme")
+    assert spec.reads == ["servicing_support.in"]
+    assert spec.writes == ["servicing_support.out"]
+    assert any("read" in s for s in verdict.stripped)
+
+
+def test_web_search_not_auto_granted(fp):
+    """Least privilege: web_search is NOT auto-granted just for being grantable (#8)."""
+    r = mk(fp, "aml_sanctions_screening", {"name": "aml", "lists": ["OFAC"]})
+    assert "ofac_screen" in r["spec"]["tools"]
+    assert "web_search" not in r["spec"]["tools"]
+
+
+def test_side_effecting_pauses_before_firing(fp):
+    """A side-effecting tool pauses at the HITL gate BEFORE it executes (#2)."""
+    fp.register_mcp(McpServer(name="acme_mcp", url="https://m", tenant_id="acme", approved=True))
+    mk(fp, "servicing_support", {"name": "s1"},
+       additional_requirements="use acme_mcp.send_email", tenant="acme",
+       approve_side_effecting=True)
+    run = fp.run("acme", ["s1"])
+    assert run["hitl_pause"] and run["hitl_pause"]["pending_tool"] == "acme_mcp.send_email"
+
+
+def test_ofac_hit_blocks(fp):
+    """A true OFAC hit is actually detected and blocks (#9)."""
+    from fingent.middleware import compliance_overseer
+    from fingent.tools_native import ofac_screen
+    v = compliance_overseer({"outputs": {"ofac_screen": ofac_screen("Oleg Petrov")}})
+    assert v["blocked"] and v["verdict"] == "BLOCK"
+
+
+def test_pii_actually_redacted(fp):
+    """PII is removed from results, not merely detected (#10)."""
+    from fingent.middleware import redact_obj
+    out = redact_obj({"phone": "+1-512-555-0142", "note": "ok"})
+    assert "555-0142" not in str(out)
+
+
+def test_blackboard_per_key_dedup():
+    """Identical payloads under different keys are both kept (#12)."""
+    from fingent.blackboard import Blackboard
+    bb = Blackboard(tenant_id="t")
+    assert bb.write("a.out", {"v": 1}, "w", ["a.out"]) is True
+    assert bb.write("b.out", {"v": 1}, "w", ["b.out"]) is True
+    assert bb.write("a.out", {"v": 1}, "w", ["a.out"]) is False
+
+
+def test_timeout_enforced():
+    """timeout_seconds is actually enforced (#11)."""
+    import time
+    from fingent.middleware import Budget, GuardrailTrip
+    from fingent.schemas import GuardrailPolicy
+    b = Budget(GuardrailPolicy(timeout_seconds=0))
+    time.sleep(0.002)
+    with pytest.raises(GuardrailTrip):
+        b.step()
+
+
+def test_freetext_injection_logged(fp):
+    """Injection attempts in the free-text field are detected + audited (#13)."""
+    r = mk(fp, "servicing_support", {"name": "svc"}, additional_requirements=INJECT)
+    assert r["compiler_log"]["freetext_injection_signatures"]
+    assert any(a["action"] == "freetext_injection_flagged" for a in fp.store.get_audit("acme"))
+
+
+def test_crystallized_template_is_reusable(fp):
+    """A crystallized template exposes a usable name parameter (#22)."""
+    r = fp.create_agent(CreateAgentRequest(
+        template=None, answers={"name": "esg"},
+        additional_requirements="Screen ESG risk using adverse media.", tenant_id="acme"))
+    tpl = fp.store.get_template(r["crystallized_template"])
+    assert any(p.name == "name" for p in tpl.parameters)

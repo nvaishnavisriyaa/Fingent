@@ -87,6 +87,47 @@ class AgentSpec(BaseModel):
     guardrails: GuardrailPolicy = Field(default_factory=GuardrailPolicy)
     security: SecurityPolicy
     requires_human_review: bool = False
+    # ---- first-class agent configuration (editable by the operator) ---------- #
+    purpose: str = ""                      # one-line business purpose
+    instructions: str = ""                 # operating instructions for the runtime
+    input_schema: dict = Field(default_factory=dict)   # expected inputs {field: hint}
+    output_format: str = "summary"         # summary | json | recommendation
+    risk_level: str = "medium"             # low | medium | high (operator-declared)
+    deployed: bool = True                  # exposed as a callable endpoint
+
+
+# --------------------------------------------------------------------------- #
+# Runs (first-class, persisted, with status)
+# --------------------------------------------------------------------------- #
+class RunStep(BaseModel):
+    idx: int
+    kind: str                              # think | tool | guardrail | review | output | error
+    tool: str | None = None
+    tool_input: dict | None = None
+    tool_output: Any | None = None
+    note: str = ""
+    blocked: bool = False
+    latency_ms: float = 0.0
+
+
+class RunRecord(BaseModel):
+    id: str
+    tenant_id: str
+    agent: str
+    trace_id: str
+    mode: str                              # "llm" (real model) | "demo" (deterministic engine)
+    input: dict = Field(default_factory=dict)
+    status: str = "success"                # success|failed|blocked|needs_review|approved|rejected
+    steps: list[RunStep] = Field(default_factory=list)
+    output: Any | None = None
+    risk_score: int = 0                    # 0-100
+    risk_level: str = "low"                # low | medium | high
+    risk_flags: list[str] = Field(default_factory=list)
+    pending_action: dict | None = None     # side-effecting tool held for approval
+    reviewer: str | None = None
+    review_note: str = ""
+    duration_ms: float = 0.0
+    ts: float = 0.0
 
 
 # --------------------------------------------------------------------------- #
@@ -122,7 +163,8 @@ class CreateAgentRequest(BaseModel):
     answers: dict = Field(default_factory=dict)   # structured form fields
     additional_requirements: str = ""      # the free-text last field (UNTRUSTED input)
     tenant_id: str
-    approve_side_effecting: bool = False    # explicit operator approval to grant write/pay tools
+    approve_side_effecting: bool = False    # blanket operator approval for ALL write/pay tools
+    approved_side_effecting_tools: list[str] = Field(default_factory=list)  # per-tool approval
 
 
 # --------------------------------------------------------------------------- #

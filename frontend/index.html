@@ -3,342 +3,1147 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Fingent — agentic platform for financial services</title>
+<title>Fingent — Agentic platform for financial services</title>
 <style>
-  :root{--bg:#0b1020;--panel:#141a2e;--panel2:#1c2440;--ink:#e8ecf8;--mut:#8b95b5;
-        --acc:#5b8cff;--ok:#2fbf8f;--warn:#f2b13c;--bad:#ff6b6b;--line:#27304f}
+  :root{
+    --bg:#f4f6fb; --surface:#ffffff; --surface2:#f8fafc;
+    --ink:#0e1b2e; --ink2:#1f2d44; --mut:#64748b; --mut2:#94a3b8;
+    --line:#e6ebf3; --line2:#eef2f8;
+    --navy:#0b2545; --navy2:#13386b;
+    --acc:#0a8f5b; --acc-ink:#067a4d; --acc-soft:#e7f6ef;
+    --blue:#2563eb; --blue-soft:#e8f0fe;
+    --warn:#b7791f; --warn-soft:#fdf4e3; --bad:#c0392b; --bad-soft:#fdecea;
+    --ok:#0a8f5b; --ok-soft:#e7f6ef; --purple:#6d28d9; --purple-soft:#f1ebfe;
+    --shadow:0 1px 2px rgba(16,27,46,.04),0 8px 24px rgba(16,27,46,.06);
+    --shadow-sm:0 1px 2px rgba(16,27,46,.05);
+    --r:14px;
+  }
   *{box-sizing:border-box}
-  body{margin:0;font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--ink)}
-  header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;background:#0d1428;position:sticky;top:0;z-index:5}
-  header h1{font-size:17px;margin:0;letter-spacing:.3px}
-  header .tag{color:var(--mut);font-size:12px}
-  .tenant{margin-left:auto;display:flex;gap:8px;align-items:center}
-  .tenant select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
-  nav{display:flex;gap:6px;padding:10px 18px;border-bottom:1px solid var(--line);background:#0d1428;flex-wrap:wrap}
-  nav button{background:transparent;border:1px solid transparent;color:var(--mut);padding:7px 13px;border-radius:8px;cursor:pointer;font-size:13px}
-  nav button.active{background:var(--panel2);color:var(--ink);border-color:var(--line)}
-  main{padding:22px;max-width:1180px;margin:0 auto}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
-  .card h3{margin:0 0 4px;font-size:15px}
-  .card .desc{color:var(--mut);font-size:12.5px;min-height:34px}
-  .pill{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;background:var(--panel2);color:var(--mut);border:1px solid var(--line)}
-  .pill.t1{color:#9fd0ff}.pill.t2{color:#ffd9a3}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  label{display:block;margin:12px 0 5px;font-size:12.5px;color:var(--mut)}
-  input,select,textarea{width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit}
+  html,body{height:100%}
+  body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#d7deea;border-radius:8px;border:2px solid var(--bg)}
+
+  /* ---------- shell ---------- */
+  .app{display:grid;grid-template-columns:64px 1fr;min-height:100vh}
+  .side{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;
+        align-items:center;gap:4px;padding:14px 0;position:sticky;top:0;height:100vh}
+  .side .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#0b2545,#13386b);
+        color:#fff;display:grid;place-items:center;font-weight:800;font-size:16px;margin-bottom:10px;box-shadow:var(--shadow-sm)}
+  .navbtn{width:42px;height:42px;border-radius:11px;border:none;background:transparent;color:var(--mut);
+        display:grid;place-items:center;cursor:pointer;position:relative;transition:.15s}
+  .navbtn:hover{background:var(--surface2);color:var(--ink)}
+  .navbtn.active{background:var(--acc-soft);color:var(--acc-ink)}
+  .navbtn svg{width:20px;height:20px}
+  .navbtn .tip{position:absolute;left:52px;top:50%;transform:translateY(-50%);background:var(--navy);color:#fff;
+        font-size:12px;padding:5px 9px;border-radius:7px;white-space:nowrap;opacity:0;pointer-events:none;
+        transition:.12s;z-index:50;box-shadow:var(--shadow)}
+  .navbtn:hover .tip{opacity:1}
+  .side .spacer{flex:1}
+
+  .main{min-width:0;display:flex;flex-direction:column}
+  .topbar{height:60px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;
+        gap:14px;padding:0 22px;position:sticky;top:0;z-index:20}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:.2px}
+  .brand .b-sub{color:var(--mut);font-weight:500;font-size:12.5px}
+  .topbar .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .tenant{display:flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--line);
+        border-radius:9px;padding:5px 8px 5px 11px}
+  .tenant label{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  .tenant select{border:none;background:transparent;color:var(--ink);font:inherit;font-weight:600;font-size:13px;cursor:pointer;outline:none}
+  .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0a8f5b,#13386b);color:#fff;
+        display:grid;place-items:center;font-weight:700;font-size:13px}
+  .content{padding:26px 30px 60px;max-width:1320px;width:100%;margin:0 auto}
+
+  /* ---------- generic ---------- */
+  h1{font-size:22px;margin:0 0 2px;letter-spacing:-.2px}
+  h2{font-size:18px;margin:0 0 2px;letter-spacing:-.2px}
+  h3{font-size:15px;margin:0}
+  .page-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px}
+  .page-head .sub{color:var(--mut);font-size:13.5px;margin-top:2px}
+  .page-head .actions{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .muted{color:var(--mut)} .small{font-size:12.5px} .xs{font-size:11.5px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow-sm)}
+  .card.pad{padding:18px}
+  .grid{display:grid;gap:16px}
+  .sep{height:1px;background:var(--line);margin:14px 0}
+
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 14px;border-radius:10px;
+       cursor:pointer;font:inherit;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:7px;transition:.14s}
+  .btn:hover{background:var(--surface2);border-color:#d7deea}
+  .btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+  .btn.primary:hover{background:var(--acc-ink)}
+  .btn.navy{background:var(--navy);border-color:var(--navy);color:#fff}
+  .btn.navy:hover{background:var(--navy2)}
+  .btn.sm{padding:6px 11px;font-size:12.5px}
+  .btn.ghost{background:transparent}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .iconbtn{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:var(--surface);
+       display:grid;place-items:center;cursor:pointer;color:var(--mut)}
+  .iconbtn:hover{background:var(--surface2);color:var(--ink)}
+  .iconbtn svg{width:17px;height:17px}
+
+  input,select,textarea{width:100%;background:var(--surface);color:var(--ink);border:1px solid var(--line);
+       border-radius:10px;padding:10px 12px;font:inherit;outline:none;transition:.14s}
+  input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
   textarea{resize:vertical}
-  .freetext{border:1px dashed var(--acc);border-radius:11px;padding:12px;margin-top:14px;background:rgba(91,140,255,.06)}
-  .freetext label{color:var(--acc);font-weight:600;margin-top:0}
-  button.act{background:var(--acc);border:none;color:white;padding:10px 16px;border-radius:9px;cursor:pointer;font-weight:600}
-  button.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--ink);padding:9px 14px;border-radius:9px;cursor:pointer}
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .muted{color:var(--mut)}
-  pre{background:#0a0f1f;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;font-size:12px;max-height:360px}
-  .note{border-radius:11px;padding:13px;margin:12px 0}
-  .note.warn{background:rgba(242,177,60,.1);border:1px solid var(--warn)}
-  .note.ok{background:rgba(47,191,143,.1);border:1px solid var(--ok)}
-  .note.bad{background:rgba(255,107,107,.1);border:1px solid var(--bad)}
-  .kv{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:12.5px}
-  .kv b{color:var(--mut);font-weight:500}
-  .tool{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);margin:2px 4px 2px 0;display:inline-block}
-  .tool.web{border-color:#3a6}.tool.mcp{border-color:#a6f;color:#d9bcff}.tool.native{color:#bcd}
-  .strip{color:var(--bad);font-size:12px}
-  .span{border-left:2px solid var(--line);margin:4px 0 4px 8px;padding:4px 0 4px 12px}
-  .span .h{font-size:12.5px}
-  .badge{font-size:10.5px;padding:1px 7px;border-radius:6px;margin-left:6px}
-  .badge.tool{background:#243; color:#9f8}.badge.agent{background:#234;color:#9cf}
-  .badge.hitl{background:#432;color:#fc9}.badge.planner{background:#323;color:#caf}
-  table{width:100%;border-collapse:collapse;font-size:12.5px}
-  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
-  th{color:var(--mut);font-weight:500}
-  .small{font-size:12px}
-  a.link{color:var(--acc);cursor:pointer}
+  label.fld{display:block;margin:14px 0 6px;font-size:12.5px;color:var(--ink2);font-weight:600}
+  .search{position:relative}
+  .search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--mut2)}
+  .search input{padding-left:34px}
+  select.filter{width:auto;min-width:150px;font-weight:600}
+
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;
+       background:var(--surface2);color:var(--mut);border:1px solid var(--line)}
+  .pill.t1{background:var(--blue-soft);color:#1d4ed8;border-color:#d3e0fd}
+  .pill.t2{background:var(--purple-soft);color:#6d28d9;border-color:#e6dcfb}
+  .pill.ok{background:var(--ok-soft);color:var(--acc-ink);border-color:#cdeede}
+  .pill.warn{background:var(--warn-soft);color:#9a6610;border-color:#f5e4c2}
+  .pill.bad{background:var(--bad-soft);color:#a8321f;border-color:#f6d4cd}
+  .pill.flat{background:#fff}
+  .tool-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:8px;
+       background:var(--surface2);border:1px solid var(--line);color:var(--ink2);margin:3px 5px 0 0}
+  .tool-chip.web{border-color:#cdeede;background:var(--ok-soft);color:var(--acc-ink)}
+  .tool-chip.mcp{border-color:#e6dcfb;background:var(--purple-soft);color:#6d28d9}
+  .tool-chip.side::after{content:"⚠";margin-left:1px}
+
+  /* ---------- metric cards ---------- */
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .metric{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 18px 16px;
+       box-shadow:var(--shadow-sm);position:relative;overflow:hidden}
+  .metric .ic{position:absolute;right:16px;top:16px;width:36px;height:36px;border-radius:10px;display:grid;place-items:center}
+  .metric .lab{font-size:12.5px;color:var(--mut);font-weight:600}
+  .metric .val{font-size:28px;font-weight:800;letter-spacing:-.5px;margin-top:6px}
+  .metric .delta{font-size:12px;color:var(--mut);margin-top:3px}
+  .metric .val.green{color:var(--acc-ink)} .metric .val.warn{color:#9a6610} .metric .val.navy{color:var(--navy)}
+
+  /* ---------- tables ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;padding:11px 14px;color:var(--mut);font-weight:600;font-size:12px;
+       text-transform:uppercase;letter-spacing:.4px;background:var(--surface2);border-bottom:1px solid var(--line)}
+  tbody td{padding:13px 14px;border-bottom:1px solid var(--line2)}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr.clk{cursor:pointer} tbody tr.clk:hover{background:var(--surface2)}
+  .t-name{display:flex;align-items:center;gap:10px;font-weight:600}
+  .li-ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff;flex:none}
+
+  /* ---------- template gallery ---------- */
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+  .tcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;cursor:pointer;
+       transition:.15s;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:8px}
+  .tcard:hover{border-color:#cdd7e6;box-shadow:var(--shadow);transform:translateY(-1px)}
+  .tcard .top{display:flex;align-items:center;gap:11px}
+  .tcard h3{font-size:14.5px}
+  .tcard .desc{color:var(--mut);font-size:12.5px;line-height:1.5;min-height:38px}
+  .cat-head{display:flex;align-items:center;gap:10px;margin:24px 0 12px}
+  .cat-head h2{font-size:15px;color:var(--ink2)}
+  .cat-head .ln{flex:1;height:1px;background:var(--line)}
+
+  /* ---------- drawer ---------- */
+  .scrim{position:fixed;inset:0;background:rgba(14,27,46,.38);backdrop-filter:blur(2px);z-index:60;opacity:0;
+       pointer-events:none;transition:.18s}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .drawer{position:fixed;top:0;right:0;height:100vh;width:min(640px,94vw);background:var(--surface);z-index:61;
+       box-shadow:-12px 0 40px rgba(16,27,46,.18);transform:translateX(100%);transition:.22s cubic-bezier(.4,0,.2,1);
+       display:flex;flex-direction:column}
+  .drawer.show{transform:translateX(0)}
+  .drawer .dh{display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--line)}
+  .drawer .db{padding:20px 22px;overflow:auto;flex:1}
+  .drawer .df{padding:14px 22px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;background:var(--surface2)}
+
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:8px 14px;font-size:13px}
+  .kv b{color:var(--mut);font-weight:600}
+  .note{border-radius:11px;padding:13px 15px;font-size:13px;line-height:1.5}
+  .note.ok{background:var(--ok-soft);border:1px solid #cdeede}
+  .note.warn{background:var(--warn-soft);border:1px solid #f5e4c2}
+  .note.bad{background:var(--bad-soft);border:1px solid #f6d4cd}
+  .note.info{background:var(--blue-soft);border:1px solid #d3e0fd}
+  pre{background:#0e1b2e;color:#e7edf6;border-radius:10px;padding:13px;overflow:auto;font-size:12px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-height:340px;line-height:1.5}
+  details>summary{cursor:pointer;color:var(--mut);font-size:12.5px;font-weight:600;list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▸ ";color:var(--mut2)}
+  details[open]>summary::before{content:"▾ "}
+
+  .empty{text-align:center;padding:48px 20px;color:var(--mut)}
+  .empty .big{font-size:15px;font-weight:600;color:var(--ink2);margin-bottom:4px}
+
+  /* span tree */
+  .span{border-left:2px solid var(--line);margin:4px 0 4px 6px;padding:5px 0 5px 12px}
+  .badge{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:6px;margin-right:6px}
+  .badge.tool{background:var(--ok-soft);color:var(--acc-ink)}
+  .badge.agent{background:var(--blue-soft);color:#1d4ed8}
+  .badge.hitl{background:var(--warn-soft);color:#9a6610}
+  .badge.planner{background:var(--purple-soft);color:#6d28d9}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px}
+  .tabs button{border:none;background:transparent;padding:10px 14px;cursor:pointer;color:var(--mut);font:inherit;
+       font-weight:600;font-size:13.5px;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs button.active{color:var(--acc-ink);border-bottom-color:var(--acc)}
+
+  /* hero */
+  .hero{background:linear-gradient(180deg,#eef3fb 0%,#f4f6fb 60%);border:1px solid var(--line);border-radius:18px;
+       padding:36px 30px 30px;text-align:center;position:relative;overflow:hidden}
+  .hero .orb{width:64px;height:64px;border-radius:50%;margin:0 auto 14px;
+       background:conic-gradient(from 90deg,#0a8f5b,#2563eb,#6d28d9,#0a8f5b);filter:blur(.3px);box-shadow:0 6px 24px rgba(37,99,235,.25)}
+  .hero h1{font-size:26px;background:linear-gradient(90deg,#0b2545,#0a8f5b);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero .tag{color:var(--mut);margin:6px 0 18px}
+  .prompt{position:relative;max-width:760px;margin:0 auto}
+  .prompt textarea{min-height:104px;padding:16px;border-radius:14px;box-shadow:var(--shadow-sm);font-size:14.5px}
+  .prompt .go{position:absolute;right:12px;bottom:12px;width:40px;height:40px;border-radius:50%;background:var(--navy);
+       color:#fff;border:none;cursor:pointer;display:grid;place-items:center}
+  .prompt .go:hover{background:var(--navy2)}
+  .chips{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+  .chip{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 15px;cursor:pointer;
+       font-size:13px;font-weight:500;transition:.14s;box-shadow:var(--shadow-sm)}
+  .chip:hover{border-color:var(--acc);color:var(--acc-ink)}
+
+  .carousel{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:1100px){.metrics{grid-template-columns:repeat(2,1fr)}.carousel{grid-template-columns:repeat(2,1fr)}}
+  svg .grid-l{stroke:var(--line);stroke-width:1}
 </style>
 </head>
 <body>
-<header>
-  <h1>⬡ Fingent</h1><span class="tag">reusable agentic platform · financial services</span>
-  <div class="tenant"><span class="muted small">tenant</span>
-    <select id="tenant"><option>acme</option><option>globex</option><option>initech</option></select>
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <div class="main">
+    <header class="topbar">
+      <div class="brand"><span style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#0b2545,#13386b);color:#fff;display:grid;place-items:center;font-weight:800">F</span>
+        Fingent <span class="b-sub">· agentic platform for financial services</span></div>
+      <div class="right">
+        <div class="tenant"><label>Tenant</label>
+          <select id="tenant"><option>acme</option><option>globex</option><option>initech</option></select></div>
+        <div class="avatar" id="avatar">A</div>
+      </div>
+    </header>
+    <main class="content" id="main"></main>
   </div>
-</header>
-<nav>
-  <button data-view="catalog" class="active">Catalog</button>
-  <button data-view="agents">My agents</button>
-  <button data-view="mcp">MCP servers</button>
-  <button data-view="traces">Trace inspector</button>
-  <button data-view="compiler">Compiler log</button>
-  <button data-view="audit">Audit trail</button>
-</nav>
-<main id="main"></main>
+</div>
+<div class="scrim" id="scrim"></div>
+<div class="drawer" id="drawer"></div>
 
 <script>
-const api = (p,o={}) => fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','X-Tenant':tenant(),...(o.headers||{})}}).then(r=>r.json());
-const tenant = () => document.getElementById('tenant').value;
-const el = (h)=>{const d=document.createElement('div');d.innerHTML=h;return d.firstElementChild;};
-const esc = (s)=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-let STATE={view:'catalog',template:null};
+/* ============================ helpers ============================ */
+const tenant=()=>document.getElementById('tenant').value;
+const authToken=()=>{try{return sessionStorage.getItem('fin_token')||'';}catch(_){return '';}};
+const api=(p,o={})=>fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','X-Tenant':tenant(),...(authToken()?{'Authorization':'Bearer '+authToken()}:{}),...(o.headers||{})}})
+  .then(async r=>{let d=null;try{d=await r.json();}catch(_){}if(!r.ok){if(r.status===401&&authToken()){try{sessionStorage.removeItem('fin_token');}catch(_){}showLogin();}throw new Error((d&&(d.detail||d.message))||('HTTP '+r.status));}return d;});
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const el=h=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstElementChild;};
+const fmt=n=>{n=Number(n)||0;return n>=1000?(n/1000).toFixed(n%1000?1:0)+'k':(Number.isInteger(n)?n:n.toFixed(2));};
+const money=n=>'$'+(Number(n)||0).toFixed(2);
+const slug=s=>(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,28)||'agent';
+const colorFor=s=>{const c=['#0a8f5b','#2563eb','#6d28d9','#b7791f','#0891b2','#be123c','#475569'];let h=0;for(const ch of (s||'x'))h=(h*31+ch.charCodeAt(0))>>>0;return c[h%c.length];};
+const initials=s=>(s||'?').split(/[_\s-]/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
+const toolClass=t=>t.includes('.')?'mcp':(t==='web_search'?'web':'native');
 
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
-  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active'); STATE.view=b.dataset.view; render();
-});
-document.getElementById('tenant').onchange=render;
+/* ============================ icons ============================ */
+const I={
+ home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l9 7v11h-6v-6H9v6H3V10z"/></svg>',
+ dash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg>',
+ catalog:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+ agents:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4M9 13h.01M15 13h.01M2 12v3M22 12v3"/></svg>',
+ tools:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 005.4-5.4l-2.3 2.3-2.3-.6-.6-2.3z"/></svg>',
+ mcp:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><circle cx="12" cy="12" r="3"/></svg>',
+ shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>',
+ trace:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg>',
+ audit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h10l3 3v15H4V3z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>',
+ search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>',
+ refresh:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 10-3 6.7M21 5v5h-5"/></svg>',
+ plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
+ arrow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+ up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+ credit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/></svg>',
+ bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
+ spark:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v6M12 15v6M5 8l3 2M16 14l3 2M19 8l-3 2M8 14l-3 2"/></svg>',
+ play:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+ flask:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3"/><path d="M7 15h10"/></svg>',
+ list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+ check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>',
+ edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>',
+ copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>',
+ trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
+};
 
-async function render(){
-  const m=document.getElementById('main'); m.innerHTML='<p class="muted">Loading…</p>';
-  if(STATE.view==='catalog') return renderCatalog(m);
-  if(STATE.view==='form') return renderForm(m);
-  if(STATE.view==='agents') return renderAgents(m);
-  if(STATE.view==='mcp') return renderMcp(m);
-  if(STATE.view==='traces') return renderTraces(m);
-  if(STATE.view==='compiler') return renderCompiler(m);
-  if(STATE.view==='audit') return renderAudit(m);
+/* ============================ nav ============================ */
+const NAV=[
+ {k:'home',ic:I.home,t:'Home'},
+ {k:'playground',ic:I.flask,t:'Playground'},
+ {k:'dashboard',ic:I.dash,t:'Monitoring'},
+ {k:'catalog',ic:I.catalog,t:'Template catalog'},
+ {k:'agents',ic:I.agents,t:'Agents'},
+ {k:'runs',ic:I.list,t:'Runs'},
+ {k:'reviews',ic:I.check,t:'Review queue'},
+ {k:'toolkits',ic:I.tools,t:'Toolkits'},
+ {k:'mcp',ic:I.mcp,t:'MCP servers'},
+ {k:'guardrails',ic:I.shield,t:'Guardrails & compliance'},
+ {k:'traces',ic:I.trace,t:'Traces'},
+ {k:'compiler',ic:I.spark,t:'Compiler log'},
+ {k:'audit',ic:I.audit,t:'Audit trail'},
+];
+let STATE={view:'home',template:null};
+
+function renderNav(){
+  const s=document.getElementById('side');
+  s.innerHTML='<div class="logo">F</div>';
+  NAV.forEach(n=>{
+    const b=el(`<button class="navbtn ${STATE.view===n.k?'active':''}">${n.ic}<span class="tip">${n.t}</span></button>`);
+    b.onclick=()=>{STATE.view=n.k;closeDrawer();render();};
+    s.appendChild(b);
+  });
+  s.appendChild(el('<div class="spacer"></div>'));
 }
 
+document.getElementById('tenant').onchange=()=>{document.getElementById('avatar').textContent=tenant()[0].toUpperCase();render();};
+
+/* ============================ router ============================ */
+const VIEWS={home:renderHome,playground:renderPlayground,dashboard:renderDashboard,catalog:renderCatalog,
+  agents:renderAgents,runs:renderRuns,reviews:renderReviews,toolkits:renderToolkits,mcp:renderMcp,
+  guardrails:renderGuardrails,traces:renderTraces,compiler:renderCompiler,audit:renderAudit};
+async function render(){
+  renderNav();
+  const m=document.getElementById('main');
+  m.innerHTML='<div class="empty"><div class="big">Loading…</div></div>';
+  try{ await (VIEWS[STATE.view]||renderHome)(m); }
+  catch(e){ m.innerHTML=`<div class="note bad"><b>Couldn't load this view.</b><br>${esc(e.message||e)}</div>`; }
+}
+
+/* ============================ charts ============================ */
+function lineChart(data,key){
+  const w=560,h=210,pad=28;
+  if(!data.length) return `<div class="empty small">No usage data yet for this period.</div>`;
+  const xs=data.map((_,i)=>i), ys=data.map(d=>d[key]||0);
+  const maxY=Math.max(...ys,0.0001), n=data.length;
+  const X=i=>pad+(n===1?(w-2*pad)/2:i*(w-2*pad)/(n-1));
+  const Y=v=>h-pad-(v/maxY)*(h-2*pad);
+  let path=ys.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
+  let area=`${path} L${X(n-1)} ${h-pad} L${X(0)} ${h-pad} Z`;
+  const grid=[0,.25,.5,.75,1].map(g=>`<line class="grid-l" x1="${pad}" y1="${pad+g*(h-2*pad)}" x2="${w-pad}" y2="${pad+g*(h-2*pad)}"/>`).join('');
+  const dots=ys.map((v,i)=>`<circle cx="${X(i)}" cy="${Y(v)}" r="3" fill="#0a8f5b"/>`).join('');
+  const labs=data.map((d,i)=>i%Math.ceil(n/6||1)===0?`<text x="${X(i)}" y="${h-8}" font-size="10" fill="#94a3b8" text-anchor="middle">${esc((d.date||'').slice(5))}</text>`:'').join('');
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" preserveAspectRatio="xMidYMid meet">
+    ${grid}<path d="${area}" fill="rgba(10,143,91,.10)"/><path d="${path}" fill="none" stroke="#0a8f5b" stroke-width="2.2"/>${dots}${labs}</svg>`;
+}
+function barList(items,labelKey,valKey){
+  if(!items.length) return `<div class="empty small">No agent activity yet.</div>`;
+  const max=Math.max(...items.map(i=>i[valKey]||0),1);
+  return `<div style="display:flex;flex-direction:column;gap:11px;padding:4px 2px">`+items.map(it=>`
+    <div>
+      <div class="row" style="justify-content:space-between;margin-bottom:5px">
+        <span class="small" style="font-weight:600">${esc(it[labelKey])}</span>
+        <span class="small muted">${fmt(it[valKey])}</span></div>
+      <div style="height:8px;background:var(--surface2);border-radius:6px;overflow:hidden">
+        <div style="height:100%;width:${Math.max(4,(it[valKey]/max)*100)}%;background:linear-gradient(90deg,#0a8f5b,#13386b);border-radius:6px"></div>
+      </div></div>`).join('')+`</div>`;
+}
+
+/* ============================ HOME ============================ */
+const QUICKSTARTS=[
+ ['KYC onboarding agent','Build a KYC onboarding agent that OCR-extracts ID documents, screens the applicant against OFAC sanctions and PEP lists, and flags anything for human review.'],
+ ['Sanctions & PEP screening','Create an AML screening agent that checks a name against OFAC/EU/UN sanctions, PEP status and adverse media, and blocks any hit for compliance review.'],
+ ['Credit underwriting','Build a credit underwriting agent that parses financial statements, computes liquidity and leverage ratios, and produces a risk score with required human review.'],
+ ['Transaction fraud monitor','Create a fraud-detection agent that runs anomaly detection over transactions and escalates high-score anomalies.'],
+ ['Reg-change compliance watch','Build a compliance-monitoring agent that ingests US regulatory feeds and turns new rules into trackable obligations.'],
+];
+async function renderHome(m){
+  const [tpls,agents]=await Promise.all([api('/templates'),api('/agents')]);
+  m.innerHTML='';
+  const hero=el(`<section class="hero">
+    <div class="orb"></div>
+    <h1>Meet Fin — your FS agent builder</h1>
+    <div class="tag">Describe the agent you need and Fin builds it from scratch — no template required. The LLM proposes a spec; the validator disposes, so least-privilege and compliance hold by construction.</div>
+    <div class="prompt">
+      <textarea id="heroPrompt" placeholder="e.g. Build an agent that screens new customers against sanctions and PEP lists, then routes hits to a compliance officer…"></textarea>
+      <button class="go" id="heroGo" title="Build with Fin">${I.up}</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </section>`);
+  m.appendChild(hero);
+  const chips=hero.querySelector('#chips');
+  QUICKSTARTS.forEach(([label,prompt])=>{const c=el(`<button class="chip">${esc(label)}</button>`);
+    c.onclick=()=>{hero.querySelector('#heroPrompt').value=prompt;hero.querySelector('#heroPrompt').focus();};chips.appendChild(c);});
+  hero.querySelector('#heroGo').onclick=()=>heroBuild(hero.querySelector('#heroPrompt').value);
+  hero.querySelector('#heroPrompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))heroBuild(e.target.value);});
+
+  // template carousel
+  const head=el(`<div class="page-head" style="margin-top:28px"><div><h2>Agent templates</h2>
+    <div class="sub">Pre-built, governed agents for financial-services workflows.</div></div>
+    <div class="actions"><button class="btn ghost" id="viewAll">View all ${I.arrow}</button></div></div>`);
+  m.appendChild(head);
+  head.querySelector('#viewAll').onclick=()=>{STATE.view='catalog';render();};
+  const car=el('<div class="carousel"></div>');
+  tpls.slice(0,4).forEach(t=>car.appendChild(templateCard(t)));
+  m.appendChild(car);
+
+  // agents list
+  const ah=el(`<div class="page-head" style="margin-top:30px"><div><h2>Your agents</h2>
+    <div class="sub">${agents.length} agent${agents.length===1?'':'s'} · rebuilt from spec on every run.</div></div>
+    <div class="actions"><button class="btn primary" id="addAgent">${I.plus} New agent</button></div></div>`);
+  m.appendChild(ah);
+  ah.querySelector('#addAgent').onclick=()=>{STATE.view='catalog';render();};
+  m.appendChild(agentsTable(agents));
+}
+async function heroBuild(prompt){
+  prompt=(prompt||'').trim();
+  if(!prompt){alert('Describe what the agent should do first.');return;}
+  openDrawer(`<div class="dh"><div class="li-ic" style="background:#0b2545">Fin</div>
+    <div><h3>Fin is building your agent</h3><div class="small muted">From scratch · validator-governed</div></div></div>
+    <div class="db" id="dbody"><div class="empty"><div class="big">Fin is compiling your agent…</div><div class="small">The validator will strip anything outside policy.</div></div></div>`);
+  try{
+    const uname=slug(prompt)+'_'+Date.now().toString(36).slice(-3);   // unique each build
+    const body={template:null,answers:{name:uname},additional_requirements:prompt};
+    const r=await api('/agents',{method:'POST',body:JSON.stringify(body)});
+    document.getElementById('dbody').innerHTML=resultHtml(r,null);
+    wireResult(document.getElementById('dbody'),r,null);
+    if(r&&r.ok) render();   // refresh the lists behind the drawer
+  }catch(e){document.getElementById('dbody').innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+}
+
+/* ============================ DASHBOARD ============================ */
+async function renderDashboard(m){
+  STATE.dashTab=STATE.dashTab||'analytics';
+  STATE.days=STATE.days||7;
+  m.innerHTML=`<div class="tabs"><button data-t="analytics">Analytics</button><button data-t="traces">Traces</button></div><div id="dashbody"></div>`;
+  m.querySelectorAll('.tabs button').forEach(b=>{b.classList.toggle('active',b.dataset.t===STATE.dashTab);
+    b.onclick=()=>{STATE.dashTab=b.dataset.t;renderDashboard(m);};});
+  const body=m.querySelector('#dashbody');
+  if(STATE.dashTab==='traces') return tracesInto(body);
+  // analytics
+  const a=await api('/analytics?days='+STATE.days);
+  const t=a.totals;
+  body.innerHTML='';
+  const head=el(`<div class="page-head"><div><h1>Analytics dashboard</h1>
+    <div class="sub">Usage, cost and compliance signals across your agents.</div></div>
+    <div class="actions">
+      <select class="filter" id="days"><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select>
+      <button class="iconbtn" id="rf">${I.refresh}</button></div></div>`);
+  body.appendChild(head);
+  head.querySelector('#days').value=String(STATE.days);
+  head.querySelector('#days').onchange=e=>{STATE.days=+e.target.value;renderDashboard(m);};
+  head.querySelector('#rf').onclick=()=>renderDashboard(m);
+
+  const metrics=el(`<div class="metrics">
+    ${metricCard('Total AI Credits',money(t.credits),'credit','navy','across '+t.runs+' run'+(t.runs===1?'':'s'))}
+    ${metricCard('Total Tool Calls',fmt(t.tool_calls),'bolt','','tool invocations')}
+    ${metricCard('Active Agents',fmt(t.active_agents),'spark','green','deployed specs')}
+    ${metricCard('Guardrail Trips',fmt(t.guardrail_trips+t.injection_blocks),'shield','warn',t.injection_blocks+' injection block'+(t.injection_blocks===1?'':'s'))}
+  </div>`);
+  body.appendChild(metrics);
+
+  // run outcomes (first-class runs)
+  let runs=[]; try{runs=await api('/runs');}catch(_){}
+  const sc={}; runs.forEach(r=>sc[r.status]=(sc[r.status]||0)+1);
+  const order=['success','approved','needs_review','blocked','rejected','failed'];
+  const ro=el(`<div class="card pad" style="margin-top:16px"><div class="row" style="justify-content:space-between">
+    <h3>Run outcomes</h3><a class="link small" id="goReviews" style="cursor:pointer;color:var(--acc-ink)">Open review queue →</a></div>
+    <div class="row" style="gap:18px;margin-top:12px;flex-wrap:wrap">
+      ${order.filter(s=>sc[s]).map(s=>`<div>${statusBadge(s)} <b>${sc[s]}</b></div>`).join('')||'<span class="muted small">No runs yet — try the Playground.</span>'}
+    </div></div>`);
+  body.appendChild(ro);
+  ro.querySelector('#goReviews').onclick=()=>{STATE.view='reviews';render();};
+
+  const charts=el(`<div class="grid" style="grid-template-columns:1.3fr 1fr;margin-top:16px">
+    <div class="card pad"><h3>AI Credits Used Over Time</h3><div style="margin-top:10px">${lineChart(a.credits_over_time,'credits')}</div></div>
+    <div class="card pad"><h3>Top Agents by Tool Calls</h3><div style="margin-top:12px">${barList(a.top_agents,'agent','tool_calls')}</div></div>
+  </div>`);
+  body.appendChild(charts);
+
+  // compliance strip
+  const comp=el(`<div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:16px">
+    ${miniStat('HITL reviews triggered',t.hitl_pauses,'Human-in-the-loop pauses for sign-off','warn')}
+    ${miniStat('Prompt-injection blocks',t.injection_blocks,'Untrusted tool output quarantined','bad')}
+    ${miniStat('Runs in window',t.runs,'Total governed executions','ok')}
+  </div>`);
+  body.appendChild(comp);
+
+  const tbl=el(`<div class="card" style="margin-top:18px;overflow:hidden">
+    <div class="pad" style="padding-bottom:8px"><h3>Agent-wise Usage Breakdown</h3></div>
+    <table><thead><tr><th>Agent</th><th>Tool Calls</th><th>Runs</th><th>Avg tools / run</th></tr></thead>
+    <tbody>${a.agent_breakdown.length?a.agent_breakdown.map(r=>`<tr>
+      <td><div class="t-name"><span class="li-ic" style="background:${colorFor(r.agent)}">${initials(r.agent)}</span>${esc(r.agent)}</div></td>
+      <td>${r.tool_calls}</td><td>${r.runs}</td><td>${(r.tool_calls/(r.runs||1)).toFixed(1)}</td></tr>`).join('')
+      :'<tr><td colspan="4"><div class="empty"><div class="big">No agents found</div><div class="small">Run an agent to see usage here.</div></div></td></tr>'}
+    </tbody></table></div>`);
+  body.appendChild(tbl);
+}
+function metricCard(lab,val,icon,cls,delta){
+  const bg={navy:'#eef3fb',green:'var(--ok-soft)',warn:'var(--warn-soft)','':'var(--blue-soft)'}[cls||''];
+  const col={navy:'#13386b',green:'#0a8f5b',warn:'#b7791f','':'#2563eb'}[cls||''];
+  return `<div class="metric"><div class="ic" style="background:${bg};color:${col}">${I[icon]}</div>
+    <div class="lab">${lab}</div><div class="val ${cls}">${val}</div><div class="delta">${esc(delta||'')}</div></div>`;
+}
+function miniStat(lab,val,sub,cls){
+  return `<div class="card pad"><div class="row" style="justify-content:space-between"><span class="small" style="font-weight:600">${lab}</span>
+    <span class="pill ${cls}">${val}</span></div><div class="small muted" style="margin-top:6px">${esc(sub)}</div></div>`;
+}
+
+/* ============================ CATALOG ============================ */
 async function renderCatalog(m){
   const tpls=await api('/templates');
-  m.innerHTML='<h2>Template catalog <span class="muted small">— pick a template, fill the form, the LLM compiles the agent</span></h2>';
-  for(const tier of [1,2]){
-    m.appendChild(el(`<h3 class="muted">Tier ${tier} ${tier===1?'· GTM customer discovery':'· FS operational'}</h3>`));
-    const g=el('<div class="grid"></div>');
-    tpls.filter(t=>t.tier===tier).forEach(t=>{
-      const c=el(`<div class="card"><div class="row"><span class="pill t${tier}">tier ${tier}</span>
-        ${t.default_depends_on.length?`<span class="pill">depends: ${t.default_depends_on.map(d=>d.agent+'·'+d.type).join(', ')}</span>`:''}</div>
-        <h3>${esc(t.name)}</h3><div class="desc">${esc(t.description)}</div>
-        <button class="act">Create from this</button></div>`);
-      c.querySelector('button').onclick=()=>{STATE.template=t.name;STATE.view='form';render();};
-      g.appendChild(c);
+  STATE.catQ=STATE.catQ||'';
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Template catalog</h1>
+    <div class="sub">Governed, ready-to-deploy agents. Pick one, configure it, and the validator compiles a least-privilege spec.</div></div></div>`));
+  const bar=el(`<div class="row" style="margin-bottom:8px">
+    <div class="search" style="flex:1;max-width:420px">${I.search}<input id="catSearch" placeholder="Search templates…"></div>
+    <span class="muted small">${tpls.length} templates</span></div>`);
+  m.appendChild(bar);
+  const wrap=el('<div id="catWrap"></div>'); m.appendChild(wrap);
+  const groups=[{tier:1,name:'Go-to-Market (Tier 1)',desc:'Prospect discovery & qualification'},
+                {tier:2,name:'FS Operations (Tier 2)',desc:'KYC, AML, credit, fraud & compliance'}];
+  function paint(){
+    const q=STATE.catQ.toLowerCase();
+    wrap.innerHTML='';
+    groups.forEach(g=>{
+      const items=tpls.filter(t=>t.tier===g.tier&&(t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q)));
+      if(!items.length) return;
+      wrap.appendChild(el(`<div class="cat-head"><h2>${esc(g.name)}</h2><span class="muted small">${esc(g.desc)}</span><div class="ln"></div></div>`));
+      const gal=el('<div class="gallery"></div>');
+      items.forEach(t=>gal.appendChild(templateCard(t)));
+      wrap.appendChild(gal);
     });
-    m.appendChild(g);
+    if(!wrap.children.length) wrap.appendChild(el('<div class="empty"><div class="big">No templates match</div></div>'));
   }
-  const scratch=el('<div class="card" style="margin-top:16px;border-style:dashed"><h3>Build from scratch</h3><div class="desc">No template fits? Describe the agent in free-text; the LLM builds it and the platform stores it as a new template.</div><button class="ghost">Build from scratch</button></div>');
-  scratch.querySelector('button').onclick=()=>{STATE.template=null;STATE.view='form';render();};
-  m.appendChild(scratch);
+  bar.querySelector('#catSearch').value=STATE.catQ;
+  bar.querySelector('#catSearch').oninput=e=>{STATE.catQ=e.target.value;paint();};
+  paint();
+}
+function templateCard(t){
+  const c=el(`<div class="tcard">
+    <div class="top"><span class="li-ic" style="background:${colorFor(t.name)}">${initials(t.name)}</span>
+      <div style="min-width:0"><h3>${esc(t.name)}</h3>
+        <div class="row" style="gap:6px;margin-top:3px"><span class="pill t${t.tier}">Tier ${t.tier}</span>
+        ${(t.default_depends_on||[]).length?`<span class="pill">depends · ${t.default_depends_on.length}</span>`:''}
+        ${t.default_guardrails&&t.default_guardrails.output_review_required?'<span class="pill warn">HITL</span>':''}</div></div></div>
+    <div class="desc">${esc(t.description||'')}</div>
+    <div class="row" style="margin-top:auto;justify-content:space-between">
+      <span class="muted xs">${(t.grantable_tools||[]).length} tools</span>
+      <span class="btn sm ghost">Configure ${I.arrow}</span></div></div>`);
+  c.onclick=()=>openTemplate(t);
+  return c;
 }
 
-async function renderForm(m){
-  const name=STATE.template;
-  let schema={parameters:[],free_text_field:{label:'Additional / specific requirements',name:'additional_requirements',placeholder:'Describe anything special…'},description:'Build a brand-new agent from scratch.',template:null,tier:2};
-  if(name) schema=await api('/templates/'+name+'/form');
-  m.innerHTML=`<a class="link" onclick="STATE.view='catalog';render()">&larr; catalog</a>
-    <h2>${name?'New '+esc(name)+' agent':'New agent (from scratch)'}</h2>
-    <p class="muted">${esc(schema.description||'')}</p>`;
-  const form=el('<div class="card"></div>');
-  form.appendChild(el('<label>Agent name</label>'));
-  const nameI=el('<input id="f_name" placeholder="my_agent"/>'); form.appendChild(nameI);
-  schema.parameters.filter(p=>p.name!=='name').forEach(p=>{
-    form.appendChild(el(`<label>${esc(p.label)}${p.required?' *':''}</label>`));
-    let f;
-    if(p.type==='number'){f=el(`<input type="number" min="${p.min??''}" max="${p.max??''}" step="0.01" value="${p.default??''}"/>`);}
-    else if(p.type==='boolean'){f=el(`<select><option value="true">Yes</option><option value="false">No</option></select>`);f.value=String(p.default??false);}
-    else if(p.type==='select'){f=el('<select></select>');(p.options||[]).forEach(o=>f.appendChild(el(`<option ${o===p.default?'selected':''}>${esc(o)}</option>`)));}
-    else if(p.type==='multi_select'){f=el('<select multiple style="height:96px"></select>');(p.options||[]).forEach(o=>f.appendChild(el(`<option ${(p.default||[]).includes(o)?'selected':''}>${esc(o)}</option>`)));}
-    else{f=el(`<input value="${p.default??''}"/>`);}
-    f.dataset.pname=p.name; f.dataset.ptype=p.type; f.className='pfield'; form.appendChild(f);
-  });
-  const ft=el(`<div class="freetext"><label>${esc(schema.free_text_field.label)} — always the last field, LLM-interpreted (never string-merged)</label>
-    <textarea id="f_free" rows="5" placeholder="${esc(schema.free_text_field.placeholder)}"></textarea></div>`);
-  form.appendChild(ft);
-  form.appendChild(el('<label class="row"><input type="checkbox" id="f_side" style="width:auto"/> &nbsp;Operator approves side-effecting tools (write/send/pay)</label>'));
-  const btn=el('<button class="act" style="margin-top:14px">Create agent</button>');
-  form.appendChild(btn);
-  const out=el('<div id="out"></div>');
-  m.appendChild(form); m.appendChild(out);
-  btn.onclick=()=>submit(name,out,false);
-}
-
-function collectAnswers(){
-  const answers={name:document.getElementById('f_name').value||'my_agent'};
-  document.querySelectorAll('.pfield').forEach(f=>{
-    if(f.dataset.ptype==='multi_select') answers[f.dataset.pname]=[...f.selectedOptions].map(o=>o.value);
-    else if(f.dataset.ptype==='number') answers[f.dataset.pname]=parseFloat(f.value);
-    else if(f.dataset.ptype==='boolean') answers[f.dataset.pname]=f.value==='true';
-    else answers[f.dataset.pname]=f.value;
-  });
-  return answers;
-}
-
-async function submit(template,out,auto){
-  out.innerHTML='<p class="muted">Compiling agent with the LLM…</p>';
-  const body={template,answers:collectAnswers(),additional_requirements:document.getElementById('f_free').value,
-    approve_side_effecting:document.getElementById('f_side').checked,auto_provision:auto};
-  const r=await api('/agents',{method:'POST',body:JSON.stringify(body)});
-  renderResult(r,out,template);
-}
-
-function toolEl(t){const k=t.includes('.')?'mcp':(t==='web_search'?'web':'native');return `<span class="tool ${k}">${esc(t)}</span>`;}
-
-function renderResult(r,out,template){
-  if(r.stage==='input_validation'){
-    out.innerHTML=`<div class="note bad"><b>Rejected before the LLM was called.</b><br>${r.errors.map(esc).join('<br>')}</div>`;return;
-  }
-  if(r.needs_prerequisites){
-    out.innerHTML=`<div class="note warn"><b>Dependency required — create the prerequisite first.</b>
-      <div class="kv" style="margin-top:8px">${r.missing_hard.map(d=>`<b>${esc(d.agent)}</b><span>${esc(d.reason)} (hard)</span>`).join('')}</div>
-      <p class="small muted">Provisioning order: ${r.creation_order.map(esc).join(' → ')}</p>
-      <button class="act" id="prov">Create prerequisite chain now</button> <button class="ghost" id="cancel">Cancel</button></div>`;
-    out.querySelector('#prov').onclick=()=>submit(template,out,true);
-    out.querySelector('#cancel').onclick=()=>out.innerHTML='';
-    return;
-  }
-  if(r.stage==='dependency' && r.cycle){out.innerHTML=`<div class="note bad"><b>Dependency cycle rejected:</b> ${r.cycle.map(esc).join(' → ')}</div>`;return;}
-  if(!r.ok){out.innerHTML=`<div class="note bad"><b>Compile failed.</b> ${esc(r.message||'')}</div>`;return;}
-  const s=r.spec, cl=r.compiler_log||{}, strips=(cl.verdicts||[]).flatMap(v=>v.stripped||[]);
-  out.innerHTML=`<div class="note ok"><b>Agent compiled & validated.</b> ${r.used_llm?'(Groq/Llama)':'(deterministic compiler — set GROQ_API_KEY for Llama)'}
-      ${r.provisioned&&r.provisioned.length?`<br>Auto-provisioned prerequisites: ${r.provisioned.map(esc).join(', ')}`:''}
-      ${r.crystallized_template?`<br>Crystallized into a new template: <b>${esc(r.crystallized_template)}</b>`:''}</div>
-    <div class="card"><div class="kv">
-      <b>name</b><span>${esc(s.name)}</span>
-      <b>template</b><span>${esc(s.template||'(from scratch)')}</span>
-      <b>tier</b><span>${s.tier}</span>
-      <b>tools (granted)</b><span>${s.tools.map(toolEl).join('')||'<i class=muted>none</i>'}</span>
-      <b>human review</b><span>${s.requires_human_review?'required':'no'}</span>
-      <b>injection check</b><span>${s.guardrails.injection_check?'ON':'off'}</span>
-      <b>output review</b><span>${s.guardrails.output_review_required?'required':'no'}</span>
+/* ---- template drawer + form ---- */
+async function openTemplate(t){
+  openDrawer(`<div class="dh"><span class="li-ic" style="background:${colorFor(t.name)};width:40px;height:40px">${initials(t.name)}</span>
+    <div style="flex:1"><h3>${esc(t.name)}</h3><div class="small muted">Tier ${t.tier} · ${(t.grantable_tools||[]).length} grantable tools</div></div>
+    <button class="iconbtn" onclick="closeDrawer()">✕</button></div>
+    <div class="db" id="dbody"><div class="empty"><div class="big">Loading…</div></div></div>`);
+  let schema={parameters:[],free_text_field:{label:'Additional / specific requirements',placeholder:'Describe special checks, data sources, tone, edge cases…'},description:t.description};
+  try{ schema=await api('/templates/'+encodeURIComponent(t.name)+'/form'); }catch(_){}
+  const body=document.getElementById('dbody');
+  body.innerHTML=`<p class="muted" style="margin-top:0">${esc(t.description||'')}</p>
+    <div class="note info" style="margin-bottom:14px"><b>Governed by construction.</b> Free-text is treated as desired behaviour, never instructions to the compiler. The validator strips any tool, memory scope, or review bypass outside policy.</div>
+    <div class="kv" style="margin-bottom:6px">
+      <b>Grantable tools</b><span>${(t.grantable_tools||[]).map(x=>`<span class="tool-chip ${toolClass(x)}">${esc(x)}</span>`).join('')||'<i class="muted">none</i>'}</span>
+      ${(t.default_depends_on||[]).length?`<b>Dependencies</b><span>${t.default_depends_on.map(d=>`<span class="tool-chip">${esc(d.agent)} · ${esc(d.type)}</span>`).join('')}</span>`:''}
+      <b>Guardrails</b><span>${guardChips(t.default_guardrails||{})}</span>
     </div>
-    ${strips.length?`<div class="note warn" style="margin-top:10px"><b>Spec validator stripped/neutralized:</b><br>${strips.map(x=>'<span class="strip">• '+esc(x)+'</span>').join('<br>')}</div>`:''}
-    <details style="margin-top:10px"><summary class="muted">role prompt</summary><pre>${esc(s.role_prompt)}</pre></details>
-    <button class="act" id="runit" style="margin-top:12px">Run this agent</button></div>
-    <div id="runout"></div>`;
-  out.querySelector('#runit').onclick=async()=>{
-    const ro=out.querySelector('#runout'); ro.innerHTML='<p class="muted">Running…</p>';
-    const rr=await api('/run',{method:'POST',body:JSON.stringify({agents:[s.name]})});
-    renderRun(rr,ro);
+    <div class="sep"></div>
+    <h3 style="margin-bottom:4px">Configure</h3>
+    <div id="formFields"></div>`;
+  const ff=body.querySelector('#formFields');
+  ff.appendChild(el('<label class="fld">Agent name *</label>'));
+  ff.appendChild(el('<input id="f_name" placeholder="my_'+esc(t.name)+'">'));
+  (schema.parameters||[]).filter(p=>p.name!=='name').forEach(p=>{
+    ff.appendChild(el(`<label class="fld">${esc(p.label)}${p.required?' *':''}</label>`));
+    let f;
+    if(p.type==='number') f=el(`<input type="number" step="any" value="${p.default??''}">`);
+    else if(p.type==='boolean'){f=el('<select><option value="true">Yes</option><option value="false">No</option></select>');f.value=String(p.default??false);}
+    else if(p.type==='select'){f=el('<select></select>');(p.options||[]).forEach(o=>f.appendChild(el(`<option ${o===p.default?'selected':''}>${esc(o)}</option>`)));}
+    else if(p.type==='multi_select'){ff.appendChild(el('<div class="muted xs" style="margin:-2px 0 5px">hold Ctrl / ⌘ for multiple</div>'));f=el('<select multiple style="height:104px"></select>');(p.options||[]).forEach(o=>f.appendChild(el(`<option ${(p.default||[]).includes(o)?'selected':''}>${esc(o)}</option>`)));}
+    else f=el(`<input value="${esc(p.default??'')}">`);
+    f.dataset.pname=p.name;f.dataset.ptype=p.type;f.className=(f.className||'')+' pfield';ff.appendChild(f);
+  });
+  ff.appendChild(el(`<label class="fld">${esc((schema.free_text_field||{}).label||'Additional requirements')}</label>`));
+  ff.appendChild(el(`<textarea id="f_free" rows="4" placeholder="${esc((schema.free_text_field||{}).placeholder||'')}"></textarea>`));
+  ff.appendChild(el('<label class="fld" style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="f_side" style="width:auto"> Operator approves side-effecting tools (write / send / pay)</label>'));
+  const out=el('<div id="formOut" style="margin-top:14px"></div>'); ff.appendChild(out);
+  setDrawerFooter(`<button class="btn ghost" onclick="closeDrawer()">Cancel</button>
+    <button class="btn primary" id="compileBtn">${I.spark} Compile agent</button>`);
+  document.getElementById('compileBtn').onclick=()=>submitTemplate(t.name,out,false);
+}
+function guardChips(g){
+  const c=[];
+  if(g.injection_check!==false) c.push('<span class="tool-chip">injection scan</span>');
+  if(g.input_pii_check!==false) c.push('<span class="tool-chip">PII redaction</span>');
+  if(g.output_review_required) c.push('<span class="tool-chip" style="border-color:#f5e4c2;background:var(--warn-soft);color:#9a6610">compliance review</span>');
+  c.push(`<span class="tool-chip">max ${g.max_steps||12} steps</span>`);
+  return c.join('');
+}
+function collectAnswers(){
+  const a={name:document.getElementById('f_name').value||'my_agent'};
+  document.querySelectorAll('.pfield').forEach(f=>{
+    if(f.dataset.ptype==='multi_select') a[f.dataset.pname]=[...f.selectedOptions].map(o=>o.value);
+    else if(f.dataset.ptype==='number') a[f.dataset.pname]=parseFloat(f.value);
+    else if(f.dataset.ptype==='boolean') a[f.dataset.pname]=f.value==='true';
+    else a[f.dataset.pname]=f.value;
+  });
+  return a;
+}
+async function submitTemplate(name,out,auto){
+  out.innerHTML='<div class="note info">Compiling with the LLM, then disposing through the validator…</div>';
+  const body={template:name,answers:collectAnswers(),additional_requirements:document.getElementById('f_free').value,
+    approve_side_effecting:document.getElementById('f_side').checked,auto_provision:auto};
+  try{
+    const r=await api('/agents',{method:'POST',body:JSON.stringify(body)});
+    out.innerHTML=resultHtml(r,name);
+    wireResult(out,r,name);
+    if(r&&r.ok) render();   // refresh the lists behind the drawer
+  }catch(e){out.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+}
+
+/* ---- compile result ---- */
+function resultHtml(r,template){
+  if(r.stage==='input_validation') return `<div class="note bad"><b>Rejected before the LLM ran.</b><br>${(r.errors||[]).map(esc).join('<br>')}</div>`;
+  if(r.needs_prerequisites){
+    return `<div class="note warn"><b>Prerequisite agents required first.</b>
+      <div class="kv" style="margin-top:8px">${r.missing_hard.map(d=>`<b>${esc(d.agent)}</b><span>${esc(d.reason)} (hard)</span>`).join('')}</div>
+      <div class="small muted" style="margin-top:6px">Order: ${(r.creation_order||[]).map(esc).join(' → ')}</div></div>
+      <div class="row" style="margin-top:12px"><button class="btn primary" data-act="prov">Create prerequisite chain</button>
+      <button class="btn ghost" data-act="cancel">Cancel</button></div>`;
+  }
+  if(r.stage==='dependency'&&r.cycle) return `<div class="note bad"><b>Dependency cycle rejected:</b> ${r.cycle.map(esc).join(' → ')}</div>`;
+  if(!r.ok) return `<div class="note bad"><b>Compile failed.</b> ${esc(r.message||'')}</div>`;
+  const s=r.spec, strips=((r.compiler_log||{}).verdicts||[]).flatMap(v=>v.stripped||[]);
+  const inj=((r.compiler_log||{}).freetext_injection_signatures)||[];
+  return `<div class="note ok"><b>Agent compiled &amp; validated.</b> ${r.used_llm?'(Groq / Llama)':'(deterministic compiler)'}
+    ${r.provisioned&&r.provisioned.length?`<br>Auto-provisioned: ${r.provisioned.map(esc).join(', ')}`:''}
+    ${r.crystallized_template?`<br>Saved as reusable template <b>${esc(r.crystallized_template)}</b>`:''}</div>
+    <div class="card pad" style="margin-top:12px"><div class="kv">
+      <b>Name</b><span>${esc(s.name)}</span>
+      <b>Template</b><span>${esc(s.template||'(from scratch)')}</span>
+      <b>Tools granted</b><span>${(s.tools||[]).map(x=>`<span class="tool-chip ${toolClass(x)} ${'' }">${esc(x)}</span>`).join('')||'<i class="muted">none</i>'}</span>
+      <b>Memory</b><span class="small muted">reads ${(s.reads||[]).join(', ')||'—'} · writes ${(s.writes||[]).join(', ')||'—'}</span>
+      <b>Human review</b><span>${s.requires_human_review?'<span class="pill warn">required</span>':'no'}</span>
+      <b>Injection check</b><span>${s.guardrails.injection_check?'<span class="pill ok">ON</span>':'off'}</span>
+      <b>Output review</b><span>${s.guardrails.output_review_required?'<span class="pill warn">required</span>':'no'}</span>
+    </div>
+    ${strips.length?`<div class="note warn" style="margin-top:12px"><b>Validator disposed (stripped / neutralized):</b><br>${strips.map(x=>'• '+esc(x)).join('<br>')}</div>`:''}
+    ${inj.length?`<div class="note bad" style="margin-top:10px"><b>Injection attempt detected in free-text &amp; logged:</b><br>${inj.map(esc).join('<br>')}</div>`:''}
+    <details style="margin-top:12px"><summary>Role prompt</summary><pre>${esc(s.role_prompt)}</pre></details>
+    <div class="row" style="margin-top:14px"><button class="btn navy" data-act="run">${I.play} Run this agent</button>
+      <button class="btn ghost" data-act="agents">View in agents</button></div>
+    <div data-runout style="margin-top:12px"></div></div>`;
+}
+function wireResult(root,r,template){
+  const q=s=>root.querySelector(s);
+  const prov=q('[data-act=prov]'); if(prov) prov.onclick=()=>submitTemplate(template,q('#formOut')||root,true);
+  const cancel=q('[data-act=cancel]'); if(cancel) cancel.onclick=()=>{(q('#formOut')||root).innerHTML='';};
+  const agentsBtn=q('[data-act=agents]'); if(agentsBtn) agentsBtn.onclick=()=>{closeDrawer();STATE.view='agents';render();};
+  const runBtn=q('[data-act=run]');
+  if(runBtn&&r.spec) runBtn.onclick=async()=>{
+    const ro=q('[data-runout]'); ro.innerHTML='<div class="note info">Running through the planner…</div>';
+    try{const rr=await api('/run',{method:'POST',body:JSON.stringify({agents:[r.spec.name]})});ro.innerHTML=runHtml(rr);wireRun(ro,rr);}
+    catch(e){ro.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
   };
 }
 
-function renderResults(bb){
-  const keys=Object.keys(bb||{});
-  if(!keys.length) return '<p class="muted">No output produced.</p>';
-  return keys.map(k=>{
-    const r=bb[k]||{}; const outs=r.outputs||{};
-    const tools=Object.entries(outs).map(([t,d])=>`<details open><summary class="muted">${esc(t)}</summary><pre>${esc(JSON.stringify(d,null,2))}</pre></details>`).join('');
-    return `<div class="card"><div class="row"><b>${esc(r.agent||k)}</b><span class="pill">${esc(k)}</span></div>${tools||'<span class="muted">—</span>'}</div>`;
-  }).join('');
-}
-function renderRun(rr,ro){
-  if(!rr || (rr.ok===false && !rr.metrics)){ro.innerHTML=`<div class="note bad">${esc((rr&&rr.message)||'Run failed — no enabled agent matched.')}</div>`;return;}
-  let h='';
-  if(rr.hitl_pause) h+=`<div class="note warn"><b>Paused at the human-review (HITL) gate</b> — ${esc(rr.hitl_pause.agent)} · compliance verdict ${esc(rr.hitl_pause.compliance.verdict)}. The result below is held pending your approval.<br><button class="act" id="approve" style="margin-top:8px">Approve &amp; release result</button></div>`;
-  if(rr.error) h+=`<div class="note bad"><b>${esc(rr.error.type)}</b> in ${esc(rr.error.agent)}: ${esc(rr.error.detail)}</div>`;
-  h+=`<h3 class="muted">Result</h3>`+renderResults(rr.blackboard);
-  h+=`<details style="margin-top:10px"><summary class="muted">run metrics &amp; trace</summary><div class="card"><div class="kv">
-    <b>trace</b><span><a class="link" onclick="openTrace('${rr.trace_id}')">${esc(rr.trace_id)}</a></span>
-    <b>executed</b><span>${(rr.executed||[]).map(esc).join(' → ')}</span>
-    <b>latency</b><span>${rr.metrics.latency_ms} ms</span>
-    <b>tokens / cost</b><span>${rr.metrics.tokens} tok · $${rr.metrics.cost_usd}</span>
-    <b>tool calls</b><span>${Object.entries(rr.metrics.tool_calls).map(([k,v])=>k+':'+v).join('  ')||'—'}</span>
-    <b>guardrail trips</b><span>${rr.metrics.guardrail_trips}</span>
-  </div></div></details>`;
-  ro.innerHTML=h;
-  const ap=ro.querySelector('#approve');
-  if(ap) ap.onclick=async()=>{await api('/hitl',{method:'POST',body:JSON.stringify({trace_id:rr.trace_id,decision:'approve'})});ap.outerHTML='<span class="pill" style="color:#2fbf8f">approved ✓ — result released</span>';};
-}
-
-window.openTrace=async(id)=>{
-  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
-  document.querySelector('[data-view=traces]').classList.add('active');
-  STATE.view='traces'; STATE.openTrace=id; render();
-};
-
+/* ============================ AGENTS ============================ */
 async function renderAgents(m){
-  const a=await api('/agents');
-  m.innerHTML='<h2>My agents <span class="muted small">— agents are data (saved specs), rebuilt on each run</span></h2>';
-  if(!a.length){m.appendChild(el('<p class="muted">No agents yet for this tenant. Create one from the catalog.</p>'));return;}
-  const g=el('<div class="grid"></div>');
-  a.forEach(s=>{const c=el(`<div class="card"><div class="row"><span class="pill t${s.tier}">tier ${s.tier}</span>
-    ${s.requires_human_review?'<span class="pill">HITL</span>':''}</div><h3>${esc(s.name)}</h3>
-    <div class="desc">${esc((s.role_prompt||'').slice(0,90))}…</div>
-    <div>${s.tools.map(toolEl).join('')}</div>
-    <button class="ghost" style="margin-top:8px">Run</button></div>`);
-    c.querySelector('button').onclick=async()=>{const rr=await api('/run',{method:'POST',body:JSON.stringify({agents:[s.name]})});
-      const ro=el('<div></div>');c.appendChild(ro);renderRun(rr,ro);};
-    g.appendChild(c);});
-  m.appendChild(g);
-  const wf=el('<button class="act" style="margin-top:16px">Run GTM tier-1 workflow (planner orchestrates)</button>');
-  wf.onclick=async()=>{const rr=await api('/run',{method:'POST',body:JSON.stringify({tier:1})});const ro=el('<div></div>');m.appendChild(ro);renderRun(rr,ro);};
-  m.appendChild(wf);
+  const agents=await api('/agents');
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Agents</h1>
+    <div class="sub">${agents.length} agent${agents.length===1?'':'s'} · an agent is data (a saved spec), rebuilt on each run.</div></div>
+    <div class="actions"><button class="btn primary" id="add">${I.plus} Add agent</button></div></div>`));
+  m.querySelector('#add').onclick=()=>{STATE.view='catalog';render();};
+  m.appendChild(agentsTable(agents,true));
+}
+function agentsTable(agents,full){
+  if(!agents.length) return el('<div class="card"><div class="empty"><div class="big">No agents yet</div><div class="small">Create one from the catalog or the home prompt.</div></div></div>');
+  const t=el(`<div class="card" style="overflow:hidden"><table>
+    <thead><tr><th>Name</th><th>Description</th><th>Tools</th><th>Tier</th><th>Review</th><th></th></tr></thead><tbody></tbody></table></div>`);
+  const tb=t.querySelector('tbody');
+  agents.forEach(s=>{
+    const tr=el(`<tr class="clk">
+      <td><div class="t-name"><span class="li-ic" style="background:${colorFor(s.name)}">${initials(s.name)}</span>${esc(s.name)}</div></td>
+      <td class="muted small">${esc((s.role_prompt||'').split('\\n')[0].slice(0,70))}</td>
+      <td>${(s.tools||[]).slice(0,4).map(x=>`<span class="tool-chip ${toolClass(x)}">${esc(x.split('.').pop())}</span>`).join('')}${(s.tools||[]).length>4?`<span class="muted xs">+${s.tools.length-4}</span>`:''}</td>
+      <td><span class="pill t${s.tier}">Tier ${s.tier}</span></td>
+      <td>${s.requires_human_review?'<span class="pill warn">HITL</span>':'<span class="muted small">—</span>'}</td>
+      <td><button class="btn sm navy">${I.play} Run</button></td></tr>`);
+    tr.querySelector('button').onclick=e=>{e.stopPropagation();STATE.pgAgent=s.name;STATE.view='playground';render();};
+    tr.onclick=()=>openAgent(s);
+    tb.appendChild(tr);
+  });
+  return t;
+}
+function riskBadge(l){const cls={low:'ok',medium:'warn',high:'bad'}[l]||'flat';return `<span class="pill ${cls}">${esc(l||'medium')}</span>`;}
+function openAgent(s){
+  openDrawer(`<div class="dh"><span class="li-ic" style="background:${colorFor(s.name)};width:40px;height:40px">${initials(s.name)}</span>
+    <div style="flex:1"><h3>${esc(s.name)}</h3><div class="small muted">Tier ${s.tier} · ${esc(s.template||'from scratch')}</div></div>
+    <button class="iconbtn" onclick="closeDrawer()">✕</button></div>
+    <div class="db" id="agentBody">
+      <div class="kv">
+        <b>Purpose</b><span>${esc(s.purpose||'—')}</span>
+        <b>Risk level</b><span>${riskBadge(s.risk_level)}</span>
+        <b>Output format</b><span class="small">${esc(s.output_format||'summary')}</span>
+        <b>Tools</b><span>${(s.tools||[]).map(x=>`<span class="tool-chip ${toolClass(x)}">${esc(x)}</span>`).join('')||'<i class="muted">none</i>'}</span>
+        <b>Memory</b><span class="small">reads ${(s.reads||[]).join(', ')||'—'} · writes ${(s.writes||[]).join(', ')||'—'}</span>
+        <b>Human review</b><span>${s.requires_human_review?'<span class="pill warn">required</span>':'no'}</span>
+        <b>Guardrails</b><span>${guardChips(s.guardrails||{})}</span>
+      </div>
+      ${s.instructions?`<details style="margin-top:10px"><summary>Instructions</summary><pre>${esc(s.instructions)}</pre></details>`:''}
+      <div class="sep"></div>
+      <div class="row" style="justify-content:space-between"><b class="small">Deployed endpoint</b><span class="pill ${s.deployed!==false?'ok':'flat'}">${s.deployed!==false?'live · governed':'not deployed'}</span></div>
+      <div class="small muted" style="margin:6px 0 8px">Invoke over HTTP — same least-privilege spec, guardrails, HITL gate and tracing apply.</div>
+      <pre>curl -X POST http://localhost:8000/api/agents/${encodeURIComponent(s.name)}/invoke \\
+  -H "X-Tenant: ${esc(tenant())}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"inputs": {"company": "Stripe"}}'</pre>
+      <details style="margin-top:12px"><summary>Role prompt</summary><pre>${esc(s.role_prompt)}</pre></details>
+    </div>`);
+  setDrawerFooter(`<button class="btn ghost sm" id="agDelete">${I.trash} Delete</button>
+    <button class="btn ghost sm" id="agDup">${I.copy} Duplicate</button>
+    <button class="btn sm" id="agEdit">${I.edit} Edit</button>
+    <button class="btn primary sm" id="agRun">${I.play} Run in Playground</button>`);
+  document.getElementById('agRun').onclick=()=>{closeDrawer();STATE.pgAgent=s.name;STATE.view='playground';render();};
+  document.getElementById('agDup').onclick=async()=>{
+    const nn=prompt('Name for the duplicate?', s.name+'_copy'); if(!nn)return;
+    try{await api('/agents/'+encodeURIComponent(s.name)+'/duplicate',{method:'POST',body:JSON.stringify({new_name:nn})});closeDrawer();render();}
+    catch(e){alert(e.message||e);}};
+  document.getElementById('agDelete').onclick=async()=>{
+    if(!confirm('Delete agent "'+s.name+'"? This cannot be undone.'))return;
+    try{await api('/agents/'+encodeURIComponent(s.name),{method:'DELETE'});closeDrawer();render();}
+    catch(e){alert(e.message||e);}};
+  document.getElementById('agEdit').onclick=()=>openAgentEdit(s);
+}
+function openAgentEdit(s){
+  const body=document.getElementById('agentBody');
+  body.innerHTML=`<h3 style="margin-bottom:8px">Edit configuration</h3>
+    <label class="fld">Purpose</label><input id="edPurpose" value="${esc(s.purpose||'')}">
+    <label class="fld">Instructions</label><textarea id="edInstr" rows="4">${esc(s.instructions||'')}</textarea>
+    <label class="fld">Risk level</label><select id="edRisk"><option ${s.risk_level==='low'?'selected':''}>low</option><option ${(!s.risk_level||s.risk_level==='medium')?'selected':''}>medium</option><option ${s.risk_level==='high'?'selected':''}>high</option></select>
+    <label class="fld">Output format</label><select id="edOut"><option ${s.output_format==='summary'?'selected':''}>summary</option><option ${s.output_format==='json'?'selected':''}>json</option><option ${s.output_format==='recommendation'?'selected':''}>recommendation</option></select>
+    <label class="fld" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="edHitl" style="width:auto" ${s.requires_human_review?'checked':''}> Require human review before final output</label>
+    <div id="edErr"></div>`;
+  setDrawerFooter(`<button class="btn ghost" id="edCancel">Cancel</button><button class="btn primary" id="edSave">Save changes</button>`);
+  document.getElementById('edCancel').onclick=()=>openAgent(s);
+  document.getElementById('edSave').onclick=async()=>{
+    const patch={purpose:document.getElementById('edPurpose').value,instructions:document.getElementById('edInstr').value,
+      risk_level:document.getElementById('edRisk').value,output_format:document.getElementById('edOut').value,
+      requires_human_review:document.getElementById('edHitl').checked};
+    try{const r=await api('/agents/'+encodeURIComponent(s.name),{method:'PUT',body:JSON.stringify(patch)});openAgent(r.spec);render();}
+    catch(e){document.getElementById('edErr').innerHTML=`<div class="note bad" style="margin-top:10px">${esc(e.message||e)}</div>`;}
+  };
+}
+async function runAgent(s){
+  openDrawer(`<div class="dh"><span class="li-ic" style="background:${colorFor(s.name)};width:40px;height:40px">${initials(s.name)}</span>
+    <div style="flex:1"><h3>Run · ${esc(s.name)}</h3><div class="small muted">planner orchestration</div></div>
+    <button class="iconbtn" onclick="closeDrawer()">✕</button></div><div class="db" id="dbody"><div class="note info">Running…</div></div>`);
+  try{const rr=await api('/run',{method:'POST',body:JSON.stringify({agents:[s.name]})});
+    document.getElementById('dbody').innerHTML=runHtml(rr);wireRun(document.getElementById('dbody'),rr);}
+  catch(e){document.getElementById('dbody').innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+}
+function runHtml(rr){
+  if(!rr||(rr.ok===false&&!rr.metrics)) return `<div class="note bad">${esc((rr&&rr.message)||'Run failed.')}</div>`;
+  let h='';
+  if(rr.hitl_pause) h+=`<div class="note warn"><b>⏸ Paused at the human-review gate</b> — ${esc(rr.hitl_pause.agent)}${rr.hitl_pause.pending_tool?` · side-effecting tool <b>${esc(rr.hitl_pause.pending_tool)}</b> held before firing`:` · compliance verdict ${esc((rr.hitl_pause.compliance||{}).verdict||'')}`}.
+    <div class="row" style="margin-top:8px"><button class="btn primary sm" data-act="approve">Approve &amp; release</button></div></div>`;
+  if(rr.error) h+=`<div class="note bad"><b>${esc(rr.error.type)}</b> in ${esc(rr.error.agent)}: ${esc(rr.error.detail)}</div>`;
+  const bb=rr.blackboard||{};
+  h+=`<div class="card pad" style="margin-top:10px"><div class="row" style="justify-content:space-between"><h3>Run metrics</h3>
+      <a class="small" style="color:var(--acc-ink);cursor:pointer" data-act="trace">trace ${esc(rr.trace_id)} →</a></div>
+    <div class="kv" style="margin-top:10px">
+      <b>Executed</b><span>${(rr.executed||[]).map(esc).join(' → ')||'—'}</span>
+      <b>Latency</b><span>${rr.metrics.latency_ms} ms</span>
+      <b>Tokens / cost</b><span>${rr.metrics.tokens} tok · ${money(rr.metrics.cost_usd)}</span>
+      <b>Tool calls</b><span>${Object.entries(rr.metrics.tool_calls||{}).map(([k,v])=>k+':'+v).join('  ')||'—'}</span>
+      <b>Guardrail trips</b><span>${rr.metrics.guardrail_trips}</span></div></div>`;
+  const keys=Object.keys(bb);
+  if(keys.length) h+=`<h3 style="margin:16px 0 8px">Results</h3>`+keys.map(k=>{
+    const r=bb[k]||{}, outs=r.outputs||{};
+    return `<div class="card pad" style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><b>${esc(r.agent||k)}</b><span class="pill">${esc(k)}</span></div>
+      ${outs.compose_summary?summaryCard(outs.compose_summary):''}
+      ${Object.entries(outs).map(([tn,d])=>`<details style="margin-top:8px"><summary>${esc(tn)}</summary><pre>${esc(JSON.stringify(d,null,2))}</pre></details>`).join('')||'<span class="muted small">—</span>'}</div>`;}).join('');
+  return h;
+}
+function summaryCard(s){
+  s=s||{};
+  return `<div class="note info" style="margin-top:10px">
+    <div class="small" style="font-weight:700;letter-spacing:.3px;color:#1d4ed8;text-transform:uppercase">Recommended next action</div>
+    <div style="margin:6px 0 10px;font-size:14px">${esc(s.recommended_next_action||'—')}</div>
+    <div class="kv" style="grid-template-columns:120px 1fr">
+      <b>Account</b><span>${esc(s.account||'—')}</span>
+      ${(s.signals||[]).length?`<b>Signals</b><span>${s.signals.map(x=>`<span class="tool-chip">${esc(x)}</span>`).join('')}</span>`:''}
+      ${(s.decision_makers||[]).length?`<b>Decision makers</b><span>${s.decision_makers.map(esc).join('; ')}</span>`:''}
+      ${s.contact&&Object.keys(s.contact).length?`<b>Contact</b><span class="small">${Object.entries(s.contact).map(([k,v])=>k+': '+esc(v)).join(' · ')}</span>`:''}
+    </div></div>`;
+}
+function wireRun(root,rr){
+  const ap=root.querySelector('[data-act=approve]');
+  if(ap) ap.onclick=async()=>{try{await api('/hitl',{method:'POST',body:JSON.stringify({trace_id:rr.trace_id,decision:'approve'})});
+    ap.outerHTML='<span class="pill ok">approved ✓ — result released</span>';}catch(e){alert(e.message||e);}};
+  const tr=root.querySelector('[data-act=trace]');
+  if(tr) tr.onclick=()=>{closeDrawer();STATE.openTrace=rr.trace_id;STATE.view='traces';render();};
 }
 
+/* ============================ TOOLKITS ============================ */
+async function renderToolkits(m){
+  const tools=await api('/tools');
+  STATE.tkQ=STATE.tkQ||''; STATE.tkKind=STATE.tkKind||'all';
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Toolkits</h1>
+    <div class="sub">Every capability your agents can be granted — native FS tools, web search, and approved MCP tools. Least privilege is enforced at compile time.</div></div></div>`));
+  const bar=el(`<div class="row" style="margin-bottom:6px">
+    <select class="filter" id="kind"><option value="all">All tools</option><option value="native">Native</option><option value="web_search">Web</option><option value="mcp">MCP</option></select>
+    <div class="search" style="flex:1;max-width:420px">${I.search}<input id="q" placeholder="Search tools…"></div>
+    <span class="muted small" id="cnt"></span></div>`);
+  m.appendChild(bar);
+  const card=el('<div class="card" style="overflow:hidden;margin-top:8px"><table><thead><tr><th>Name</th><th>Kind</th><th>Description</th><th>Properties</th></tr></thead><tbody></tbody></table></div>');
+  m.appendChild(card);
+  const tb=card.querySelector('tbody');
+  function paint(){
+    const q=STATE.tkQ.toLowerCase(), k=STATE.tkKind;
+    const rows=tools.filter(t=>(k==='all'||t.kind===k)&&(t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q)));
+    tb.innerHTML=rows.map(t=>`<tr>
+      <td><div class="t-name"><span class="li-ic" style="background:${colorFor(t.name)};width:26px;height:26px;font-size:11px">${initials(t.name.split('.').pop())}</span>${esc(t.name)}</div></td>
+      <td><span class="pill ${t.kind==='mcp'?'t2':(t.kind==='web_search'?'ok':'flat')}">${esc(t.kind)}</span></td>
+      <td class="muted small">${esc(t.description||'')}</td>
+      <td>${t.side_effecting?'<span class="pill warn">side-effecting</span> ':''}${t.untrusted_output?'<span class="pill bad">untrusted</span>':''}${!t.side_effecting&&!t.untrusted_output?'<span class="muted small">—</span>':''}</td></tr>`).join('')
+      ||'<tr><td colspan="4"><div class="empty"><div class="big">No tools match</div></div></td></tr>';
+    bar.querySelector('#cnt').textContent=rows.length+' of '+tools.length;
+  }
+  bar.querySelector('#q').value=STATE.tkQ; bar.querySelector('#kind').value=STATE.tkKind;
+  bar.querySelector('#q').oninput=e=>{STATE.tkQ=e.target.value;paint();};
+  bar.querySelector('#kind').onchange=e=>{STATE.tkKind=e.target.value;paint();};
+  paint();
+}
+
+/* ============================ MCP ============================ */
 async function renderMcp(m){
   const list=await api('/mcp');
-  m.innerHTML='<h2>MCP servers <span class="muted small">— tenant-scoped; admin approval makes tools grantable</span></h2>';
-  const form=el(`<div class="card"><label>Server name</label><input id="mname" value="acme_mcp"/>
-    <label>URL</label><input id="murl" value="https://mcp.acme.io"/>
-    <label class="row"><input type="checkbox" id="mappr" checked style="width:auto"/> &nbsp;approved</label>
-    <button class="act" style="margin-top:10px">Register MCP server</button></div>`);
-  form.querySelector('button').onclick=async()=>{
-    const r=await api('/mcp',{method:'POST',body:JSON.stringify({name:mname.value,url:murl.value,approved:mappr.checked,secrets_ref:['acme:bloomberg_api_key']})});
-    alert('Registered '+r.registered+' — tools added: '+(r.tools_added.join(', ')||'(none; approve first)'));render();};
-  m.appendChild(form);
-  if(list.length){const t=el('<table><tr><th>name</th><th>url</th><th>approved</th></tr></table>');
-    list.forEach(s=>t.appendChild(el(`<tr><td>${esc(s.name)}</td><td class="muted">${esc(s.url)}</td><td>${s.approved?'✓':'✗'}</td></tr>`)));
-    m.appendChild(el('<h3 class="muted">Registered</h3>'));m.appendChild(t);}
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>MCP servers</h1>
+    <div class="sub">Tenant-scoped Model Context Protocol servers. Tools become grantable only after admin approval.</div></div>
+    <div class="actions"><button class="btn primary" id="add">${I.plus} Add MCP server</button></div></div>`));
+  m.querySelector('#add').onclick=()=>openMcpForm();
+  if(!list.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No MCP servers yet</div><div class="small">Add one to expose external tools (Bloomberg, email, …) to your agents.</div></div></div>'));return;}
+  const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Name</th><th>URL</th><th>Approved</th></tr></thead><tbody></tbody></table></div>');
+  list.forEach(s=>card.querySelector('tbody').appendChild(el(`<tr>
+    <td><div class="t-name"><span class="li-ic" style="background:${colorFor(s.name)};width:26px;height:26px;font-size:11px">${initials(s.name)}</span>${esc(s.name)}</div></td>
+    <td class="muted small">${esc(s.url)}</td>
+    <td>${s.approved?'<span class="pill ok">approved</span>':'<span class="pill warn">pending</span>'}</td></tr>`)));
+  m.appendChild(card);
+}
+function openMcpForm(){
+  openDrawer(`<div class="dh"><span class="li-ic" style="background:#13386b;width:38px;height:38px">${I.mcp}</span>
+    <div style="flex:1"><h3>Add MCP server</h3><div class="small muted">scoped to tenant ${esc(tenant())}</div></div>
+    <button class="iconbtn" onclick="closeDrawer()">✕</button></div>
+    <div class="db">
+      <label class="fld">Server name</label><input id="mname" value="acme_mcp">
+      <label class="fld">URL</label><input id="murl" value="https://mcp.acme.io">
+      <label class="fld" style="display:flex;align-items:center;gap:9px;cursor:pointer;margin-top:14px"><input type="checkbox" id="mappr" checked style="width:auto"> Approved (tools become grantable)</label>
+      <div id="mout" style="margin-top:14px"></div>
+    </div>`);
+  setDrawerFooter(`<button class="btn ghost" onclick="closeDrawer()">Cancel</button><button class="btn primary" id="regBtn">Register</button>`);
+  document.getElementById('regBtn').onclick=async()=>{
+    const name=document.getElementById('mname').value,url=document.getElementById('murl').value,approved=document.getElementById('mappr').checked;
+    try{const r=await api('/mcp',{method:'POST',body:JSON.stringify({name,url,approved,secrets_ref:[tenant()+':bloomberg_api_key']})});
+      document.getElementById('mout').innerHTML=`<div class="note ok"><b>Registered ${esc(r.registered)}.</b> Tools added: ${(r.tools_added||[]).map(esc).join(', ')||'(none — approve first)'}</div>`;
+    }catch(e){document.getElementById('mout').innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+  };
 }
 
-async function renderTraces(m){
-  if(STATE.openTrace){const tr=await api('/traces/'+STATE.openTrace);STATE.openTrace=null;return renderTraceDetail(m,tr);}
+/* ============================ GUARDRAILS ============================ */
+async function renderGuardrails(m){
+  const agents=await api('/agents');
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Guardrails &amp; compliance</h1>
+    <div class="sub">Cross-cutting controls wrap every agent — authors write zero guardrail code.</div></div></div>`));
+  const cards=[
+    ['PII redaction','Inputs and results are scanned for SSNs, cards, emails and phones — hard identifiers are redacted before anything is persisted or returned.','ok'],
+    ['Prompt-injection defense','Untrusted tool output (web, MCP, documents) and the free-text field are injection-scanned; matches are quarantined as data, never executed.','bad'],
+    ['Least privilege','An agent may call only its compiled allow-list and read/write only its own + declared upstream memory scope. The validator resets anything wider.','navy'],
+    ['Human-in-the-loop gate','Side-effecting tools pause for sign-off before firing; flagged output routes through a compliance overseer.','warn'],
+    ['Tenant isolation','Specs, memory, logs, runs and MCP servers are scoped per tenant — and an optional bearer token can make the tenant header unspoofable.','ok'],
+    ['Immutable audit','Create / run / approve / MCP-registration events are appended to a tamper-evident audit trail.','navy'],
+  ];
+  const g=el('<div class="gallery"></div>');
+  cards.forEach(([t,d,c])=>g.appendChild(el(`<div class="card pad"><div class="row" style="margin-bottom:8px">
+    <span class="li-ic" style="background:${({ok:'#0a8f5b',bad:'#c0392b',warn:'#b7791f',navy:'#13386b'})[c]};width:32px;height:32px">${I.shield}</span>
+    <h3>${esc(t)}</h3></div><div class="muted small" style="line-height:1.55">${esc(d)}</div></div>`)));
+  m.appendChild(g);
+  m.appendChild(el('<div class="cat-head"><h2>Per-agent policy</h2><div class="ln"></div></div>'));
+  if(!agents.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No agents yet</div></div></div>'));return;}
+  const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Agent</th><th>Injection</th><th>PII</th><th>Output review</th><th>HITL</th><th>Max steps</th></tr></thead><tbody></tbody></table></div>');
+  agents.forEach(s=>{const g=s.guardrails||{};card.querySelector('tbody').appendChild(el(`<tr>
+    <td><div class="t-name"><span class="li-ic" style="background:${colorFor(s.name)};width:26px;height:26px;font-size:11px">${initials(s.name)}</span>${esc(s.name)}</div></td>
+    <td>${g.injection_check?'<span class="pill ok">on</span>':'<span class="muted">off</span>'}</td>
+    <td>${g.input_pii_check?'<span class="pill ok">on</span>':'<span class="muted">off</span>'}</td>
+    <td>${g.output_review_required?'<span class="pill warn">required</span>':'<span class="muted">no</span>'}</td>
+    <td>${s.requires_human_review?'<span class="pill warn">yes</span>':'<span class="muted">no</span>'}</td>
+    <td>${g.max_steps||12}</td></tr>`));});
+  m.appendChild(card);
+}
+
+/* ============================ TRACES ============================ */
+async function renderTraces(m){ return tracesInto(m); }
+async function tracesInto(m){
+  if(STATE.openTrace){const id=STATE.openTrace;STATE.openTrace=null;const tr=await api('/traces/'+id);return traceDetail(m,tr);}
   const list=await api('/traces');
-  m.innerHTML='<h2>Trace inspector</h2>';
-  if(!list.length){m.appendChild(el('<p class="muted">No runs yet.</p>'));return;}
-  const t=el('<table><tr><th>trace</th><th>executed</th><th>latency</th><th>tools</th><th>trips</th></tr></table>');
-  list.forEach(x=>{const r=el(`<tr><td><a class="link">${esc(x.trace_id)}</a></td><td>${(x.executed||[]).join(' → ')}</td>
-    <td>${x.metrics.latency_ms}ms</td><td>${Object.entries(x.metrics.tool_calls).map(([k,v])=>k+':'+v).join(' ')}</td><td>${x.metrics.guardrail_trips}</td></tr>`);
-    r.querySelector('a').onclick=()=>openTrace(x.trace_id);t.appendChild(r);});
-  m.appendChild(t);
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Traces</h1>
+    <div class="sub">One trace per run · every agent, tool call and HITL pause is a span.</div></div>
+    <div class="actions"><button class="iconbtn" id="rf">${I.refresh}</button></div></div>`));
+  m.querySelector('#rf').onclick=()=>render();
+  if(!list.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No runs yet</div><div class="small">Run an agent to generate a trace.</div></div></div>'));return;}
+  const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Trace</th><th>Executed</th><th>Latency</th><th>Tool calls</th><th>Trips</th></tr></thead><tbody></tbody></table></div>');
+  list.forEach(x=>{const tr=el(`<tr class="clk"><td><span style="font-family:ui-monospace,monospace;color:var(--acc-ink)">${esc(x.trace_id)}</span></td>
+    <td class="small">${(x.executed||[]).map(esc).join(' → ')||'—'}</td><td>${x.metrics.latency_ms}ms</td>
+    <td class="small">${Object.entries(x.metrics.tool_calls||{}).map(([k,v])=>k+':'+v).join(' ')||'—'}</td>
+    <td>${x.metrics.guardrail_trips}</td></tr>`);
+    tr.onclick=()=>{STATE.openTrace=x.trace_id;render();};card.querySelector('tbody').appendChild(tr);});
+  m.appendChild(card);
 }
-
 function spanEl(s){
-  const d=el(`<div class="span"><div class="h"><span class="badge ${s.kind}">${s.kind}</span> ${esc(s.name)}
-    <span class="muted small"> ${s.latency_ms}ms ${s.attrs&&s.attrs.tool_kind?'· '+s.attrs.tool_kind:''}
-    ${s.attrs&&s.attrs.compliance?'· compliance:'+s.attrs.compliance.verdict:''}
-    ${s.attrs&&s.attrs.untrusted?'· untrusted':''}</span></div></div>`);
+  const extra=[s.attrs&&s.attrs.tool_kind?s.attrs.tool_kind:'',s.attrs&&s.attrs.compliance?'compliance:'+s.attrs.compliance.verdict:'',s.attrs&&s.attrs.untrusted?'untrusted':''].filter(Boolean).join(' · ');
+  const d=el(`<div class="span"><div><span class="badge ${s.kind}">${s.kind}</span> ${esc(s.name)}
+    <span class="muted xs"> ${s.latency_ms}ms${extra?' · '+esc(extra):''}</span></div></div>`);
   (s.children||[]).forEach(c=>d.appendChild(spanEl(c)));
   return d;
 }
-
-function renderTraceDetail(m,tr){
-  m.innerHTML=`<a class="link" onclick="STATE.view='traces';render()">&larr; traces</a><h2>${esc(tr.trace_id)}</h2>
-    <div class="card"><div class="kv">
-    <b>executed (DAG)</b><span>${(tr.executed||[]).map(esc).join(' → ')}</span>
-    <b>latency</b><span>${tr.metrics.latency_ms} ms</span>
-    <b>tokens / cost</b><span>${tr.metrics.tokens} · $${tr.metrics.cost_usd}</span>
-    <b>tool calls by kind</b><span>${Object.entries(tr.metrics.tool_calls).map(([k,v])=>k+':'+v).join('  ')}</span>
-    <b>guardrail trips</b><span>${tr.metrics.guardrail_trips}</span>
-    <b>hitl pauses</b><span>${tr.metrics.hitl_pauses}</span></div></div>
-    <h3 class="muted">Span tree</h3><div class="card" id="spans"></div>
-    <h3 class="muted">Memory (blackboard)</h3><pre>${esc(JSON.stringify(tr.blackboard,null,2))}</pre>
-    <h3 class="muted">Structured run log</h3><pre>${esc(JSON.stringify(tr.run_logs,null,2))}</pre>`;
-  m.querySelector('#spans').appendChild(spanEl(tr.spans));
+function traceDetail(m,tr){
+  m.innerHTML=`<div class="row" style="margin-bottom:14px"><a class="btn sm ghost" id="back">← Traces</a>
+    <h2 style="font-family:ui-monospace,monospace">${esc(tr.trace_id)}</h2></div>
+    <div class="card pad"><div class="kv">
+      <b>Executed (DAG)</b><span>${(tr.executed||[]).map(esc).join(' → ')||'—'}</span>
+      <b>Latency</b><span>${tr.metrics.latency_ms} ms</span>
+      <b>Tokens / cost</b><span>${tr.metrics.tokens} · ${money(tr.metrics.cost_usd)}</span>
+      <b>Tool calls</b><span>${Object.entries(tr.metrics.tool_calls||{}).map(([k,v])=>k+':'+v).join('  ')||'—'}</span>
+      <b>Guardrail trips</b><span>${tr.metrics.guardrail_trips}</span>
+      <b>HITL pauses</b><span>${tr.metrics.hitl_pauses}</span></div></div>
+    <h3 style="margin:18px 0 8px">Span tree</h3><div class="card pad" id="spans"></div>
+    <h3 style="margin:18px 0 8px">Memory (blackboard)</h3><pre>${esc(JSON.stringify(tr.blackboard,null,2))}</pre>
+    <h3 style="margin:18px 0 8px">Structured run log</h3><pre>${esc(JSON.stringify(tr.run_logs,null,2))}</pre>`;
+  m.querySelector('#back').onclick=()=>{STATE.view='traces';render();};
+  if(tr.spans) m.querySelector('#spans').appendChild(spanEl(tr.spans));
 }
 
+/* ============================ RUN RECORD (shared) ============================ */
+function statusBadge(st){
+  const m={success:['ok','Success'],approved:['ok','Approved'],failed:['bad','Failed'],
+    blocked:['bad','Blocked'],rejected:['bad','Rejected'],needs_review:['warn','Needs review']};
+  const [cls,lab]=m[st]||['flat',st]; return `<span class="pill ${cls}">${esc(lab)}</span>`;
+}
+function riskChip(level,score){const cls={low:'ok',medium:'warn',high:'bad'}[level]||'flat';
+  return `<span class="pill ${cls}">risk: ${esc(level)}${score!=null?' ('+score+')':''}</span>`;}
+function stepHtml(s){
+  const icon={tool:'🛠',guardrail:'🛡',review:'⏸',output:'✅',error:'⚠',think:'💭'}[s.kind]||'•';
+  const head=`<div class="row" style="gap:8px"><span>${icon}</span><b class="small">${esc(s.tool||s.kind)}</b>${s.blocked?'<span class="pill bad">blocked</span>':''}${s.latency_ms?`<span class="muted xs">${s.latency_ms}ms</span>`:''}</div>`;
+  const note=s.note?`<div class="muted small" style="margin:2px 0 0 24px">${esc(s.note)}</div>`:'';
+  const io=(s.tool_input||s.tool_output)?`<details style="margin:5px 0 0 24px"><summary class="xs">tool input / output</summary><pre>${esc(JSON.stringify({input:s.tool_input,output:s.tool_output},null,2))}</pre></details>`:'';
+  return `<div style="border-left:2px solid var(--line);padding:6px 0 6px 12px;margin:5px 0">${head}${note}${io}</div>`;
+}
+function runRecordHtml(rec,opts={}){
+  if(!rec||(rec.ok===false)) return `<div class="note bad">${esc((rec&&rec.message)||'No run.')}</div>`;
+  const out=rec.output;
+  let h=`<div class="card pad">
+    <div class="row" style="justify-content:space-between">
+      <div class="t-name"><span class="li-ic" style="background:${colorFor(rec.agent)};width:28px;height:28px">${initials(rec.agent)}</span>${esc(rec.agent)}</div>
+      <div class="row">${statusBadge(rec.status)} ${riskChip(rec.risk_level,rec.risk_score)} <span class="pill ${rec.mode==='llm'?'t2':'flat'}">${rec.mode==='llm'?'LLM runtime':'demo engine'}</span></div></div>
+    <div class="kv" style="margin-top:10px;grid-template-columns:110px 1fr">
+      <b>Input</b><span><pre style="max-height:120px">${esc(JSON.stringify(rec.input,null,2))}</pre></span>
+      <b>Duration</b><span class="small">${rec.duration_ms} ms · ${(rec.steps||[]).length} steps</span>
+      ${(rec.risk_flags||[]).length?`<b>Risk flags</b><span>${rec.risk_flags.map(f=>`<span class="tool-chip">${esc(f)}</span>`).join('')}</span>`:''}
+      <b>Trace</b><span><a class="link small" data-trace="${esc(rec.trace_id)}" style="cursor:pointer;color:var(--acc-ink)">${esc(rec.trace_id)} →</a></span></div>`;
+  if(rec.status==='needs_review'&&rec.pending_action)
+    h+=`<div class="note warn" style="margin-top:10px"><b>⏸ Awaiting human approval</b> — side-effecting tool <b>${esc(rec.pending_action.tool)}</b> is held before firing.</div>`;
+  h+=`<div style="margin-top:12px"><b class="small">Execution trace</b>${(rec.steps||[]).map(stepHtml).join('')||'<div class="muted small">no steps</div>'}</div>`;
+  h+=`<div style="margin-top:12px"><b class="small">Output</b>${out&&out.recommended_next_action?summaryCard(out):`<pre>${esc(JSON.stringify(out,null,2))}</pre>`}</div>`;
+  if(opts.review&&rec.status==='needs_review')
+    h+=`<div class="row" style="margin-top:14px;gap:10px"><input id="rvnote" placeholder="Reviewer note (optional)" style="flex:1">
+      <button class="btn primary sm" data-review="approve" data-run="${esc(rec.id)}">Approve</button>
+      <button class="btn sm" data-review="reject" data-run="${esc(rec.id)}" style="color:var(--bad)">Reject</button></div>`;
+  return h+`</div>`;
+}
+function wireRunRecord(root){
+  root.querySelectorAll('[data-trace]').forEach(a=>a.onclick=()=>{STATE.openTrace=a.dataset.trace;STATE.view='traces';render();});
+  root.querySelectorAll('[data-review]').forEach(b=>b.onclick=async()=>{
+    const note=(root.querySelector('#rvnote')||{}).value||''; b.disabled=true;
+    try{await api('/reviews/'+encodeURIComponent(b.dataset.run),{method:'POST',body:JSON.stringify({decision:b.dataset.review,note})});render();}
+    catch(e){alert(e.message||e);b.disabled=false;}});
+}
+
+/* ============================ PLAYGROUND ============================ */
+async function renderPlayground(m){
+  const agents=await api('/agents');
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Playground</h1>
+    <div class="sub">Run a deployed agent on a real task and watch every governed step — tool calls are actually executed.</div></div></div>`));
+  if(!agents.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No agents yet</div><div class="small">Create one from the catalog or with Fin on the Home page.</div></div></div>'));return;}
+  const sel=STATE.pgAgent&&agents.some(a=>a.name===STATE.pgAgent)?STATE.pgAgent:agents[0].name;
+  const card=el(`<div class="card pad">
+    <label class="fld">Agent</label>
+    <select id="pgAgent">${agents.map(a=>`<option value="${esc(a.name)}" ${a.name===sel?'selected':''}>${esc(a.name)} · tier ${a.tier}${a.requires_human_review?' · HITL':''}</option>`).join('')}</select>
+    <label class="fld">Task input (JSON)</label>
+    <textarea id="pgInput" rows="5">{ "company": "Stripe", "name": "Jane Doe" }</textarea>
+    <label class="fld" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="pgSide" style="width:auto"> Pre-approve side-effecting tools for this run</label>
+    <button class="btn primary" id="pgRun" style="margin-top:14px">${I.play} Run agent</button>
+    <div id="pgOut" style="margin-top:16px"></div></div>`);
+  m.appendChild(card);
+  card.querySelector('#pgAgent').onchange=e=>{STATE.pgAgent=e.target.value;};
+  card.querySelector('#pgRun').onclick=async()=>{
+    const out=card.querySelector('#pgOut'); out.innerHTML='<div class="note info">Running the governed runtime…</div>';
+    let inputs={};
+    try{inputs=JSON.parse(card.querySelector('#pgInput').value||'{}');}catch(_){out.innerHTML='<div class="note bad">Input must be valid JSON.</div>';return;}
+    try{const rec=await api('/agents/'+encodeURIComponent(card.querySelector('#pgAgent').value)+'/invoke',
+        {method:'POST',body:JSON.stringify({inputs,approve_side_effecting:card.querySelector('#pgSide').checked})});
+      out.innerHTML=runRecordHtml(rec,{review:true}); wireRunRecord(out);
+    }catch(e){out.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+  };
+}
+
+/* ============================ RUNS ============================ */
+async function renderRuns(m){
+  if(STATE.openRun){const id=STATE.openRun;STATE.openRun=null;const rec=await api('/runs/'+id);return renderRunDetail(m,rec);}
+  const runs=await api('/runs');
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Runs</h1><div class="sub">Every governed execution, persisted with status, risk and full trace.</div></div>
+    <div class="actions"><button class="iconbtn" id="rf">${I.refresh}</button></div></div>`));
+  m.querySelector('#rf').onclick=()=>render();
+  if(!runs.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No runs yet</div><div class="small">Run an agent from the Playground.</div></div></div>'));return;}
+  const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Run</th><th>Agent</th><th>Status</th><th>Risk</th><th>Mode</th><th>Steps</th><th>When</th></tr></thead><tbody></tbody></table></div>');
+  runs.forEach(r=>{const tr=el(`<tr class="clk"><td><span style="font-family:ui-monospace,monospace">${esc(r.id)}</span></td>
+    <td>${esc(r.agent)}</td><td>${statusBadge(r.status)}</td><td>${riskChip(r.risk_level,r.risk_score)}</td>
+    <td><span class="pill ${r.mode==='llm'?'t2':'flat'}">${r.mode==='llm'?'LLM':'demo'}</span></td>
+    <td>${(r.steps||[]).length}</td><td class="muted small">${new Date((r.ts||0)*1000).toLocaleString()}</td></tr>`);
+    tr.onclick=()=>{STATE.openRun=r.id;render();};card.querySelector('tbody').appendChild(tr);});
+  m.appendChild(card);
+}
+function renderRunDetail(m,rec){
+  m.innerHTML=`<div class="row" style="margin-bottom:14px"><a class="btn sm ghost" id="back">← Runs</a><h2 style="font-family:ui-monospace,monospace">${esc(rec.id)}</h2></div><div id="rd"></div>`;
+  m.querySelector('#back').onclick=()=>{STATE.view='runs';render();};
+  const rd=m.querySelector('#rd'); rd.innerHTML=runRecordHtml(rec,{review:true}); wireRunRecord(rd);
+}
+
+/* ============================ REVIEW QUEUE ============================ */
+async function renderReviews(m){
+  const reviews=await api('/reviews');
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Review queue</h1><div class="sub">Runs paused for human approval — inspect the reasoning, risk and held action, then approve or reject.</div></div>
+    <div class="actions"><span class="pill ${reviews.length?'warn':'ok'}">${reviews.length} pending</span><button class="iconbtn" id="rf">${I.refresh}</button></div></div>`));
+  m.querySelector('#rf').onclick=()=>render();
+  if(!reviews.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">Nothing to review</div><div class="small">High-risk and side-effecting runs land here automatically.</div></div></div>'));return;}
+  reviews.forEach(rec=>{const wrap=el('<div style="margin-bottom:14px"></div>');wrap.innerHTML=runRecordHtml(rec,{review:true});wireRunRecord(wrap);m.appendChild(wrap);});
+}
+
+/* ============================ COMPILER LOG ============================ */
 async function renderCompiler(m){
   const logs=await api('/compiler-logs');
-  m.innerHTML='<h2>Compiler log <span class="muted small">— what the LLM proposed and what the validator disposed</span></h2>';
-  if(!logs.length){m.appendChild(el('<p class="muted">No compilations yet.</p>'));return;}
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Compiler log</h1>
+    <div class="sub">What the LLM proposed and what the validator disposed — the security audit of every compile.</div></div>
+    <div class="actions"><button class="iconbtn" id="rf">${I.refresh}</button></div></div>`));
+  m.querySelector('#rf').onclick=()=>render();
+  if(!logs.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No compilations yet</div><div class="small">Create an agent to see the proposer/disposer trail.</div></div></div>'));return;}
   logs.slice().reverse().forEach(l=>{
     const strips=(l.verdicts||[]).flatMap(v=>v.stripped||[]);
     const warns=(l.verdicts||[]).flatMap(v=>v.warnings||[]);
-    m.appendChild(el(`<div class="card"><div class="row"><b>${esc(l.agent)}</b>
-      <span class="pill">${l.used_llm?'Groq/Llama':'deterministic'}</span><span class="pill">attempts: ${l.attempts}</span>
-      <span class="pill">${l.ok?'validated':'rejected'}</span></div>
-      ${strips.length?`<div class="note warn" style="margin-top:8px"><b>stripped:</b><br>${strips.map(x=>'• '+esc(x)).join('<br>')}</div>`:''}
-      ${warns.length?`<div class="small muted" style="margin-top:6px">${warns.map(esc).join(' · ')}</div>`:''}
-      <details style="margin-top:8px"><summary class="muted">candidate the LLM proposed</summary><pre>${esc(JSON.stringify(l.candidate_specs,null,2))}</pre></details></div>`));
+    const inj=l.freetext_injection_signatures||[];
+    m.appendChild(el(`<div class="card pad" style="margin-bottom:12px">
+      <div class="row" style="justify-content:space-between"><div class="t-name"><span class="li-ic" style="background:${colorFor(l.agent)};width:26px;height:26px;font-size:11px">${initials(l.agent)}</span>${esc(l.agent)}</div>
+        <div class="row"><span class="pill ${l.used_llm?'t2':'flat'}">${l.used_llm?'Groq/Llama':'deterministic'}</span>
+          <span class="pill">attempts: ${l.attempts}</span><span class="pill ${l.ok?'ok':'bad'}">${l.ok?'validated':'rejected'}</span></div></div>
+      ${strips.length?`<div class="note warn" style="margin-top:10px"><b>Stripped / neutralized:</b><br>${strips.map(x=>'• '+esc(x)).join('<br>')}</div>`:''}
+      ${inj.length?`<div class="note bad" style="margin-top:8px"><b>Free-text injection detected:</b> ${inj.map(esc).join(', ')}</div>`:''}
+      ${warns.length?`<div class="small muted" style="margin-top:8px">${warns.map(esc).join(' · ')}</div>`:''}
+      <details style="margin-top:10px"><summary>Candidate the LLM proposed</summary><pre>${esc(JSON.stringify(l.candidate_specs,null,2))}</pre></details></div>`));
   });
 }
 
+/* ============================ AUDIT ============================ */
 async function renderAudit(m){
   const a=await api('/audit');
-  m.innerHTML='<h2>Audit trail <span class="muted small">— append-only: who created/ran/approved what</span></h2>';
-  const t=el('<table><tr><th>time</th><th>actor</th><th>action</th><th>target</th><th>detail</th></tr></table>');
-  a.slice().reverse().forEach(r=>t.appendChild(el(`<tr><td class="small muted">${new Date(r.ts*1000).toLocaleTimeString()}</td>
-    <td>${esc(r.actor)}</td><td><b>${esc(r.action)}</b></td><td>${esc(r.target)}</td><td class="small muted">${esc((r.detail||'').slice(0,70))}</td></tr>`)));
-  m.appendChild(t);
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Audit trail</h1>
+    <div class="sub">Append-only record of who created, ran, approved and registered what.</div></div>
+    <div class="actions"><button class="iconbtn" id="rf">${I.refresh}</button></div></div>`));
+  m.querySelector('#rf').onclick=()=>render();
+  if(!a.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No audit events yet</div></div></div>'));return;}
+  const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead><tbody></tbody></table></div>');
+  a.slice().reverse().forEach(r=>{
+    const act=r.action||'', cls=/inject|denied|cycle/.test(act)?'bad':(/approve|create|crystal/.test(act)?'ok':(/hitl|notify|side/.test(act)?'warn':'flat'));
+    card.querySelector('tbody').appendChild(el(`<tr>
+      <td class="muted small">${new Date((r.ts||0)*1000).toLocaleString()}</td>
+      <td>${esc(r.actor)}</td><td><span class="pill ${cls}">${esc(act)}</span></td>
+      <td class="small">${esc(r.target)}</td><td class="muted small">${esc((r.detail||'').slice(0,80))}</td></tr>`));
+  });
+  m.appendChild(card);
 }
-render();
+
+/* ============================ drawer ============================ */
+function openDrawer(html){const d=document.getElementById('drawer');d.innerHTML=html;d.classList.add('show');document.getElementById('scrim').classList.add('show');}
+function setDrawerFooter(html){const d=document.getElementById('drawer');let f=d.querySelector('.df');if(!f){f=el('<div class="df"></div>');d.appendChild(f);}f.innerHTML=html;}
+function closeDrawer(){document.getElementById('drawer').classList.remove('show');document.getElementById('scrim').classList.remove('show');}
+document.getElementById('scrim').onclick=closeDrawer;
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
+
+/* ============================ auth / boot ============================ */
+function setTenant(t){
+  const sel=document.getElementById('tenant');
+  if(![...sel.options].some(o=>o.value===t)) sel.appendChild(el(`<option>${esc(t)}</option>`));
+  sel.value=t; document.getElementById('avatar').textContent=(t||'A')[0].toUpperCase();
+}
+function showLogin(){
+  closeDrawer();
+  document.getElementById('main').innerHTML=`
+    <div style="max-width:380px;margin:8vh auto">
+      <div class="card pad">
+        <div style="text-align:center;margin-bottom:16px">
+          <div class="li-ic" style="background:linear-gradient(135deg,#0b2545,#13386b);width:46px;height:46px;margin:0 auto 10px;font-size:18px">F</div>
+          <h2>Sign in to Fingent</h2><div class="small muted">Agentic platform for financial services</div></div>
+        <label class="fld">Username</label><input id="lu" value="admin" autocomplete="username">
+        <label class="fld">Password</label><input id="lp" type="password" autocomplete="current-password">
+        <div id="lerr"></div>
+        <button class="btn primary" id="lbtn" style="width:100%;justify-content:center;margin-top:16px">Sign in</button>
+        <div class="small muted" style="text-align:center;margin-top:12px">Demo credentials: <b>admin</b> / <b>admin</b></div>
+      </div></div>`;
+  const go=async()=>{
+    const lerr=document.getElementById('lerr'); lerr.innerHTML='';
+    try{
+      const r=await api('/login',{method:'POST',body:JSON.stringify({
+        username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
+      try{sessionStorage.setItem('fin_token',r.token);}catch(_){}
+      setTenant(r.tenant); boot();
+    }catch(e){ lerr.innerHTML=`<div class="note bad" style="margin-top:12px">${esc(e.message||e)}</div>`; }
+  };
+  document.getElementById('lbtn').onclick=go;
+  document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+}
+document.getElementById('avatar').onclick=async()=>{
+  if(!authToken())return;
+  if(confirm('Sign out of Fingent?')){try{await api('/logout',{method:'POST'});}catch(_){}try{sessionStorage.removeItem('fin_token');}catch(_){}showLogin();}
+};
+async function boot(){
+  document.getElementById('avatar').textContent=tenant()[0].toUpperCase();
+  let cfg={auth_required:false};
+  try{cfg=await api('/config');}catch(_){}
+  if(cfg.auth_required){
+    if(!authToken()) return showLogin();
+    try{const me=await api('/me');setTenant(me.tenant);}
+    catch(_){try{sessionStorage.removeItem('fin_token');}catch(__){}return showLogin();}
+  }
+  render();
+}
+
+if(location.protocol==='file:'){
+  document.getElementById('main').innerHTML=`
+    <div class="note warn" style="max-width:760px;margin:30px auto">
+      <b>Open this through the server, not as a file.</b>
+      <p style="margin:8px 0 0">You opened <code>index.html</code> directly (a <code>file://</code> URL), so the page has no backend to talk to and every tab fails to load.</p>
+      <p style="margin:10px 0 0">Start the server and open it over <b>http://localhost:8000</b>:</p>
+      <pre style="margin-top:10px">cd C:\\Fingent\\backend
+python -m pip install -r requirements.txt
+set FINGENT_DB=fingent.db
+python -m uvicorn fingent.app:app --port 8000</pre>
+      <p class="small muted" style="margin-top:8px">Or double-click <b>run.bat</b> in the project root. Optional: <code>set GROQ_API_KEY=...</code> before launching to let Fin use Llama instead of the offline compiler.</p>
+    </div>`;
+}else{
+  boot();
+}
 </script>
 </body>
 </html>

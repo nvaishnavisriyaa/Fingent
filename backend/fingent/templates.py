@@ -40,7 +40,8 @@ CATALOG: list[AgentTemplate] = [
         parameters=[_name_param(),
                     TemplateParameter(name="trigger_types", type="multi_select",
                                       label="Trigger types to watch",
-                                      options=["funding", "new_cfo", "8-K", "expansion", "debt"],
+                                      options=["funding", "new_cfo", "8-K", "expansion",
+                                               "debt", "layoffs"],
                                       default=["funding", "new_cfo"]),
                     ],
         grantable_tools=["news_monitor", "edgar_search", "web_search"],
@@ -73,7 +74,7 @@ CATALOG: list[AgentTemplate] = [
         parameters=[_name_param(),
                     TemplateParameter(name="titles", type="multi_select", label="Target titles",
                                       options=["CFO", "VP Finance", "Treasurer", "Controller",
-                                               "Head of Risk"],
+                                               "Head of Risk", "Procurement"],
                                       default=["CFO", "VP Finance"]),
                     ],
         default_depends_on=[Dependency(agent="enrichment_validation", type=HARD,
@@ -98,8 +99,10 @@ CATALOG: list[AgentTemplate] = [
             Dependency(agent="enrichment_validation", type=HARD, reason="needs enriched company"),
             Dependency(agent="persona_decision_maker", type=HARD, reason="needs personas"),
             Dependency(agent="contact", type=HARD, reason="needs contact details"),
+            Dependency(agent="signal_trigger", type=SOFT, reason="reads the triggering signals"),
+            Dependency(agent="icp_matching", type=SOFT, reason="reads the ICP match"),
         ],
-        grantable_tools=["web_search"],
+        grantable_tools=["compose_summary", "web_search"],
     ),
 
     # --------------------------- TIER 2 (FS ops) -------------------------- #
@@ -123,7 +126,7 @@ CATALOG: list[AgentTemplate] = [
         parameters=[_name_param()],
         default_depends_on=[Dependency(agent="document_intelligence", type=SOFT,
                                        reason="uses parsed ID documents when available")],
-        grantable_tools=["ocr_extract", "ofac_screen", "pep_check", "web_search"],
+        grantable_tools=["identity_verify", "ocr_extract", "ofac_screen", "pep_check", "web_search"],
     ),
     AgentTemplate(
         name="aml_sanctions_screening", tier=2,
@@ -155,7 +158,7 @@ CATALOG: list[AgentTemplate] = [
         default_depends_on=[Dependency(agent="document_intelligence", type=HARD,
                                        reason="needs parsed financial documents")],
         default_guardrails=GuardrailPolicy(output_review_required=True),
-        grantable_tools=["parse_financials", "compute_ratios", "web_search"],
+        grantable_tools=["parse_financials", "compute_ratios", "risk_score", "web_search"],
     ),
     AgentTemplate(
         name="fraud_anomaly", tier=2,
@@ -178,7 +181,7 @@ CATALOG: list[AgentTemplate] = [
         description="Account inquiries.",
         fixed={"base_role": "Answer account servicing inquiries."},
         parameters=[_name_param()],
-        grantable_tools=["web_search"],
+        grantable_tools=["account_lookup", "web_search"],
     ),
     AgentTemplate(
         name="guardrail_compliance_overseer", tier=2,
@@ -187,9 +190,35 @@ CATALOG: list[AgentTemplate] = [
                             "PII, and unsupported claims; block or annotate."},
         parameters=[_name_param()],
         default_guardrails=GuardrailPolicy(output_review_required=True),
-        grantable_tools=["web_search"],
+        grantable_tools=["compliance_check", "web_search"],
     ),
 ]
+
+
+# Explicit least-privilege DEFAULT grants (a subset of each template's grantable_tools).
+# The compiler grants only these by default; anything else must be explicitly requested in
+# the free-text field. web_search returns UNTRUSTED content, so it is opt-in everywhere
+# except templates whose whole job is web/orchestration — it is NOT auto-granted to
+# screening/financial agents just because it sits in their grantable universe (§10).
+_REQUIRED_TOOLS = {
+    "planner": [],
+    "signal_trigger": ["news_monitor", "edgar_search"],
+    "icp_matching": ["enrich_company"],
+    "enrichment_validation": ["enrich_company", "edgar_search"],
+    "persona_decision_maker": ["find_persona"],
+    "contact": ["resolve_contact"],
+    "synthesis": ["compose_summary"],
+    "document_intelligence": ["ocr_extract", "parse_financials"],
+    "kyc_onboarding": ["identity_verify", "ocr_extract", "ofac_screen", "pep_check"],
+    "aml_sanctions_screening": ["ofac_screen", "adverse_media_search", "pep_check"],
+    "credit_underwriting": ["parse_financials", "compute_ratios", "risk_score"],
+    "fraud_anomaly": ["anomaly_detect"],
+    "compliance_monitoring": ["reg_feed_ingest"],
+    "servicing_support": ["account_lookup"],
+    "guardrail_compliance_overseer": ["compliance_check"],
+}
+for _tpl in CATALOG:
+    _tpl.fixed.setdefault("required_tools", _REQUIRED_TOOLS.get(_tpl.name, []))
 
 
 def load_catalog(store) -> None:

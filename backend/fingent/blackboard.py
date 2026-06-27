@@ -31,7 +31,8 @@ class Blackboard:
     tenant_id: str
     # key -> list of versions (latest last)
     _data: dict[str, list[Version]] = field(default_factory=dict)
-    _seen_digests: set[str] = field(default_factory=set)
+    # dedup is PER KEY: writing the same payload to a different key is NOT a duplicate.
+    _seen_digests: dict[str, set[str]] = field(default_factory=dict)
 
     @staticmethod
     def _digest(value: object) -> str:
@@ -49,10 +50,12 @@ class Blackboard:
                 f"agent '{writer}' may not write '{key}' (allowed: {allowed_write})"
             )
         digest = self._digest(value)
-        # dedup: identical payload already on the board is a no-op write
-        if digest in self._seen_digests:
+        # dedup PER KEY: an identical payload already at THIS key is a no-op write, but the
+        # same value under a different key is legitimate and is kept.
+        seen = self._seen_digests.setdefault(key, set())
+        if digest in seen:
             return False
-        self._seen_digests.add(digest)
+        seen.add(digest)
         self._data.setdefault(key, []).append(
             Version(value=value, ts=time.time(), writer=writer, digest=digest)
         )

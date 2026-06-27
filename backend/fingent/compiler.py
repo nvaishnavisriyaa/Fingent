@@ -71,6 +71,19 @@ _INJECTION_PATTERNS = [
 ]
 
 
+def _default_grant(template) -> list[str]:
+    """Least-privilege DEFAULT grant for a template. Prefers an explicit
+    fixed['required_tools'] allow-list; otherwise grants the template's toolkit minus
+    web_search (untrusted, opt-in) — unless web_search is the template's only tool, in
+    which case it is the toolkit. Anything beyond this must be requested via free-text."""
+    explicit = template.fixed.get("required_tools")
+    if explicit is not None:
+        return list(explicit)
+    grantable = list(template.grantable_tools)
+    non_web = [t for t in grantable if t != "web_search"]
+    return non_web if non_web else grantable
+
+
 class SpecCompiler:
     def __init__(self, registry: ToolRegistry) -> None:
         self.registry = registry
@@ -99,6 +112,7 @@ class SpecCompiler:
             spec, verdict = validate_spec(
                 json.loads(json.dumps(candidate)), template, self.registry,
                 req.tenant_id, req.approve_side_effecting,
+                req.approved_side_effecting_tools,
             )
             result.verdicts.append(verdict)
             if spec is not None:
@@ -107,6 +121,11 @@ class SpecCompiler:
                 result.message = "compiled + validated"
                 return result
             last_error = "; ".join(verdict.errors) or "validation failed"
+            if not used_llm:
+                # the deterministic fallback is pure — retrying yields the same candidate,
+                # so don't burn the remaining attempts.
+                result.message = f"validation failed: {last_error}"
+                return result
         result.message = f"failed after {MAX_ATTEMPTS} attempts: {last_error}"
         return result
 
@@ -152,7 +171,13 @@ class SpecCompiler:
         if req.additional_requirements:
             role += f"\n\nOperator notes (behavior only): {req.additional_requirements.strip()}"
 
-        tools = list(grantable) if template else []
+        # Least privilege: start from the template's DEFAULT grant (a subset of the
+        # grantable universe), NOT the whole universe. Extra tools must be requested in
+        # the free-text field and must still be inside `grantable`.
+        if template:
+            tools = [t for t in _default_grant(template) if t in grantable]
+        else:
+            tools = []
         for kw, tool in _HINTS.items():
             if kw in free and tool not in tools:
                 tools.append(tool)
@@ -161,14 +186,15 @@ class SpecCompiler:
             if (tool.lower() in free or short in free) and tool not in tools:
                 tools.append(tool)
 
+        base = template.name if template else (answers.get("name") or "custom_agent")
         candidate = {
             "name": answers.get("name") or "custom_agent",
             "template": template.name if template else None,
             "tier": template.tier if template else 2,
             "role_prompt": role,
             "tools": tools,
-            "reads": [f"{(template.name if template else 'custom')}.in"],
-            "writes": [f"{(template.name if template else 'custom')}.out"],
+            "reads": [f"{base}.in"],
+            "writes": [f"{base}.out"],
             "depends_on": [d.model_dump() for d in (template.default_depends_on if template else [])],
             "guardrails": (template.default_guardrails.model_dump() if template
                            else {"injection_check": True}),
@@ -190,4 +216,10 @@ class SpecCompiler:
                                  "tenant_id": req.tenant_id}
         if req.answers.get("name"):
             candidate["name"] = req.answers["name"]
+        # Floor human review: if the operator ticked "require human review" on the form,
+        # that's a hard floor the LLM can never lower — only raise.
+        candidate["requires_human_review"] = (
+            bool(candidate.get("requires_human_review"))
+            or bool(req.answers.get("requires_human_review"))
+        )
         return candidate

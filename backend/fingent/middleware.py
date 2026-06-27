@@ -14,6 +14,7 @@ guardrail / observability / security / logging code.
 from __future__ import annotations
 
 import re
+import time
 
 _PII_PATTERNS = {
     "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
@@ -86,17 +87,46 @@ def scan_untrusted(payload, label: str) -> list[str]:
     return detect_injection(_flatten(payload))
 
 
-_RED_FLAGS = ["guaranteed return", "no risk", "insider tip", "evade tax",
-              "ofac_hit': true", "launder"]
+def redact_obj(obj):
+    """Recursively redact PII from any nested structure, returning a clean copy.
+    Used to scrub agent results BEFORE they are persisted to the blackboard / returned."""
+    if isinstance(obj, str):
+        return redact_pii(obj)[0]
+    if isinstance(obj, dict):
+        return {k: redact_obj(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [redact_obj(v) for v in obj]
+    return obj
+
+
+def _find_true_flag(obj, keys: set) -> bool:
+    """Recursively look for a boolean True under any key in `keys` (e.g. ofac_hit).
+    Structural — does NOT rely on flattening, so it survives JSON shape changes."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in keys and v is True:
+                return True
+            if _find_true_flag(v, keys):
+                return True
+    elif isinstance(obj, (list, tuple)):
+        return any(_find_true_flag(v, keys) for v in obj)
+    return False
+
+
+_RED_FLAGS = ["guaranteed return", "no risk", "insider tip", "evade tax", "launder"]
+_SANCTION_KEYS = {"ofac_hit", "sanctions_hit", "pep", "watchlist_hit"}
 
 
 def compliance_overseer(output) -> dict:
     text = _flatten(output)
     low = text.lower()
     flags = [f for f in _RED_FLAGS if f in low]
+    sanctions_hit = _find_true_flag(output, _SANCTION_KEYS)   # structural, reliable
+    if sanctions_hit:
+        flags.append("sanctions/PEP/watchlist hit")
     _, pii = redact_pii(text)
     leaked = [p for p in pii if p in ("ssn", "credit_card")]  # block only hard identifiers
-    blocked = bool(leaked) or "guaranteed return" in low or "no risk" in low
+    blocked = bool(leaked) or sanctions_hit or "guaranteed return" in low or "no risk" in low
     return {"flags": flags, "leaked_pii": pii, "blocked": blocked,
             "verdict": "BLOCK" if blocked else ("ANNOTATE" if (flags or pii) else "PASS")}
 
@@ -108,6 +138,7 @@ class Budget:
         self.timeout_seconds = guardrails.timeout_seconds
         self.steps = 0
         self.tokens = 0
+        self._start = time.monotonic()
 
     def step(self, tokens: int = 0):
         self.steps += 1
@@ -116,3 +147,6 @@ class Budget:
             raise GuardrailTrip("cost_loop", f"max_steps {self.max_steps} exceeded")
         if self.tokens > self.max_tokens:
             raise GuardrailTrip("cost_loop", f"max_tokens {self.max_tokens} exceeded")
+        if time.monotonic() - self._start > self.timeout_seconds:
+            raise GuardrailTrip("cost_loop",
+                                f"timeout_seconds {self.timeout_seconds} exceeded")

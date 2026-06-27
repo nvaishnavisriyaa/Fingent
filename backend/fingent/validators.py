@@ -56,10 +56,12 @@ def validate_inputs(template: AgentTemplate | None, answers: dict) -> list[str]:
 
 
 def validate_spec(candidate: dict, template: AgentTemplate | None, registry: ToolRegistry,
-                  tenant_id: str, approve_side_effecting: bool = False):
+                  tenant_id: str, approve_side_effecting: bool = False,
+                  approved_tools: list[str] | None = None):
     errors: list[str] = []
     stripped: list[str] = []
     warnings: list[str] = []
+    approved_tools = set(approved_tools or [])
 
     if template is not None:
         grantable = set(registry.effective_grantable(template.grantable_tools, tenant_id))
@@ -84,7 +86,7 @@ def validate_spec(candidate: dict, template: AgentTemplate | None, registry: Too
         if t not in grantable:
             stripped.append(f"{t}: outside grantable universe (no self-widening)")
             continue
-        if desc.side_effecting and not approve_side_effecting:
+        if desc.side_effecting and not (approve_side_effecting or t in approved_tools):
             stripped.append(f"{t}: side-effecting tool requires explicit grant-time approval")
             continue
         if desc.untrusted_output or desc.kind in (ToolKind.WEB_SEARCH, ToolKind.MCP,
@@ -95,20 +97,37 @@ def validate_spec(candidate: dict, template: AgentTemplate | None, registry: Too
     candidate["tools"] = kept_tools
     candidate["security"]["allowed_tools"] = kept_tools
 
-    allowed_prefixes = None
-    if template is not None:
-        allowed_prefixes = set(template.fixed.get("memory_prefixes", []))
-    if allowed_prefixes:
-        for field in ("reads", "writes"):
-            cleaned = []
-            for k in candidate.get(field, []):
-                if any(k == p or k.startswith(p) for p in allowed_prefixes):
-                    cleaned.append(k)
-                else:
-                    stripped.append(f"memory {field} '{k}': outside template memory scope")
-            candidate[field] = cleaned
-    candidate["security"]["memory_read"] = candidate.get("reads", [])
-    candidate["security"]["memory_write"] = candidate.get("writes", [])
+    # ---- canonical, deterministic memory scope (the security boundary) ----- #
+    # The VALIDATOR (never the LLM) decides what an agent may read/write. An agent
+    # writes only into its own output namespace and reads only its own input lane
+    # plus its declared upstream dependencies' outputs. Whatever the LLM proposed is
+    # discarded and reset to this canonical scope, so self-widening (e.g. an
+    # LLM-proposed reads=[""] that would read the whole tenant blackboard) is
+    # impossible by construction.
+    base = (template.name if template is not None else candidate.get("name")) or "custom_agent"
+    dep_agents = [
+        (d.get("agent") if isinstance(d, dict) else getattr(d, "agent", None))
+        for d in candidate.get("depends_on", [])
+    ]
+    allowed_bases = {base} | {a for a in dep_agents if a}
+    canonical_reads = sorted({f"{base}.in"} | {f"{a}.out" for a in dep_agents if a})
+    canonical_writes = [f"{base}.out"]
+
+    for k in candidate.get("reads", []) or []:
+        ns = k.split(".")[0] if k else ""
+        if (not k) or ns not in allowed_bases:
+            stripped.append(
+                f"memory read '{k}': outside canonical scope (no self-widening) — reset")
+    for k in candidate.get("writes", []) or []:
+        ns = k.split(".")[0] if k else ""
+        if (not k) or ns != base:
+            stripped.append(
+                f"memory write '{k}': outside own namespace — reset")
+
+    candidate["reads"] = canonical_reads
+    candidate["writes"] = canonical_writes
+    candidate["security"]["memory_read"] = canonical_reads
+    candidate["security"]["memory_write"] = canonical_writes
 
     candidate.setdefault("guardrails", {})
     if has_untrusted_tool:

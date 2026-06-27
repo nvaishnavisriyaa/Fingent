@@ -34,6 +34,11 @@ class ToolRegistry:
             "pep_check": "Check whether a person is a politically-exposed person.",
             "anomaly_detect": "Run anomaly detection over transactions.",
             "reg_feed_ingest": "Ingest a regulatory feed into obligations.",
+            "compose_summary": "Compose an actionable account summary + next action from shared memory.",
+            "risk_score": "Score credit risk (0-1) from financial ratios.",
+            "compliance_check": "Vet a recommendation for sanctions/PII/red-flag issues (overseer).",
+            "identity_verify": "Verify a customer identity (KYC) and return a confidence score.",
+            "account_lookup": "Look up a servicing account record.",
         }
         for name, desc in native_meta.items():
             self.register(ToolDescriptor(name=name, kind=ToolKind.NATIVE, description=desc),

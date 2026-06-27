@@ -3,5 +3,9 @@
 set -e
 cd "$(dirname "$0")/backend"
 python3 -m pip install -r requirements.txt
+# Persist agents/audit/traces across restarts (override with FINGENT_DB=:memory: for ephemeral).
+export FINGENT_DB="${FINGENT_DB:-fingent.db}"
 # optional: export GROQ_API_KEY=...  (and GROQ_MODEL=llama-3.3-70b-versatile) to use Llama
+# optional hardening: export FINGENT_TENANT_TOKENS='{"secret-token":"acme"}' to require
+# a bearer token (then the spoofable X-Tenant header is ignored).
 exec python3 -m uvicorn fingent.app:app --reload --port 8000
