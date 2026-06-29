@@ -49,13 +49,20 @@
   .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:.2px}
   .brand .b-sub{color:var(--mut);font-weight:500;font-size:12.5px}
   .topbar .right{margin-left:auto;display:flex;align-items:center;gap:12px}
-  .tenant{display:flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--line);
-        border-radius:9px;padding:5px 8px 5px 11px}
-  .tenant label{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
-  .tenant select{border:none;background:transparent;color:var(--ink);font:inherit;font-weight:600;font-size:13px;cursor:pointer;outline:none}
   .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0a8f5b,#13386b);color:#fff;
         display:grid;place-items:center;font-weight:700;font-size:13px;cursor:pointer}
   .avatar:hover{box-shadow:0 0 0 2px rgba(10,143,91,.35)}
+  .userbox{display:flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid var(--line);
+        border-radius:999px;padding:4px 6px 4px 10px}
+  .username{font-weight:700;font-size:13px;color:var(--ink2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .logout{width:32px;height:32px;border-radius:50%;border:none;background:var(--surface);color:var(--mut);
+        display:grid;place-items:center;cursor:pointer}
+  .logout:hover{color:var(--bad);background:var(--bad-soft)}
+  .logout svg{width:16px;height:16px}
+  .auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface2);border:1px solid var(--line);
+        border-radius:12px;padding:5px;margin:16px 0}
+  .auth-tabs button{border:none;background:transparent;border-radius:9px;padding:8px;font:inherit;font-weight:700;color:var(--mut);cursor:pointer}
+  .auth-tabs button.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm)}
   .content{padding:26px 30px 60px;max-width:1320px;width:100%;margin:0 auto}
 
   /* ---------- generic ---------- */
@@ -214,9 +221,12 @@
       <div class="brand"><span style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#0b2545,#13386b);color:#fff;display:grid;place-items:center;font-weight:800">F</span>
         Fingent <span class="b-sub">· agentic platform for financial services</span></div>
       <div class="right">
-        <div class="tenant"><label>Tenant</label>
-          <select id="tenant"><option>acme</option><option>globex</option><option>initech</option></select></div>
-        <div class="avatar" id="avatar">A</div>
+        <select id="tenant" style="display:none"><option>acme</option><option>globex</option><option>initech</option></select>
+        <div class="userbox" id="userbox" style="display:none">
+          <span class="username" id="usernameLabel"></span>
+          <div class="avatar" id="avatar">A</div>
+          <button class="logout" id="logoutBtn" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></button>
+        </div>
       </div>
     </header>
     <main class="content" id="main"></main>
@@ -230,7 +240,7 @@
 const tenant=()=>document.getElementById('tenant').value;
 const authToken=()=>{try{return sessionStorage.getItem('fin_token')||'';}catch(_){return '';}};
 const api=(p,o={})=>fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','X-Tenant':tenant(),...(authToken()?{'Authorization':'Bearer '+authToken()}:{}),...(o.headers||{})}})
-  .then(async r=>{let d=null;try{d=await r.json();}catch(_){}if(!r.ok){if(r.status===401&&authToken()){try{sessionStorage.removeItem('fin_token');}catch(_){}showLogin();}throw new Error((d&&(d.detail||d.message))||('HTTP '+r.status));}return d;});
+  .then(async r=>{let d=null;try{d=await r.json();}catch(_){}if(!r.ok){if(r.status===401&&authToken()){try{sessionStorage.removeItem('fin_token');}catch(_){}showAuth('signin');}throw new Error((d&&(d.detail||d.message))||('HTTP '+r.status));}return d;});
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const el=h=>{h=h.trim();const tag=(h.match(/^<([a-z]+)/i)||[])[1]||'';let host;if(/^tr$/i.test(tag)){const t=document.createElement('table');const b=document.createElement('tbody');t.appendChild(b);host=b;}else if(/^(td|th)$/i.test(tag)){const t=document.createElement('table');const b=document.createElement('tbody');const r=document.createElement('tr');b.appendChild(r);t.appendChild(b);host=r;}else if(/^(tbody|thead|tfoot)$/i.test(tag)){host=document.createElement('table');}else{host=document.createElement('div');}host.innerHTML=h;return host.firstElementChild;};
 const fmt=n=>{n=Number(n)||0;return n>=1000?(n/1000).toFixed(n%1000?1:0)+'k':(Number.isInteger(n)?n:n.toFixed(2));};
@@ -290,16 +300,17 @@ let STATE={view:'home',template:null};
 
 function renderNav(){
   const s=document.getElementById('side');
+  if(!authToken()){s.innerHTML='';return;}
   s.innerHTML='<div class="logo">F</div>';
   NAV.forEach(n=>{
     const b=el(`<button class="navbtn ${STATE.view===n.k?'active':''}">${n.ic}<span class="tip">${n.t}</span></button>`);
-    b.onclick=()=>{if(n.ext){window.location=n.ext;return;}STATE.view=n.k;closeDrawer();render();};
+    b.onclick=()=>{if(!authToken())return showAuth('signin');if(n.ext){window.location=n.ext;return;}STATE.view=n.k;closeDrawer();render();};
     s.appendChild(b);
   });
   s.appendChild(el('<div class="spacer"></div>'));
 }
 
-document.getElementById('tenant').onchange=()=>{document.getElementById('avatar').textContent=tenant()[0].toUpperCase();render();};
+document.getElementById('tenant').onchange=()=>render();
 
 /* ============================ router ============================ */
 const VIEWS={home:renderHome,playground:renderPlayground,dashboard:renderDashboard,catalog:renderCatalog,
@@ -612,7 +623,7 @@ async function mountToolPicker(host,template,selected){
   });
   const upd=()=>{const n=host.querySelectorAll('.tpick:checked').length;const c=host.querySelector('#tpCount');if(c)c.textContent=n+' selected';};
   host.querySelectorAll('.tpick').forEach(c=>c.addEventListener('change',upd)); upd();
-  if(!g.length) host.appendChild(el('<div class="muted small">No grantable tools for this tenant.</div>'));
+  if(!g.length) host.appendChild(el('<div class="muted small">No grantable tools for this workspace.</div>'));
 }
 function collectPickedTools(host){
   const picked=[],approvedSide=[];
@@ -739,7 +750,6 @@ function openAgent(s){
       <div class="row" style="justify-content:space-between"><b class="small">Deployed endpoint</b><span class="pill ${s.deployed!==false?'ok':'flat'}">${s.deployed!==false?'live · governed':'not deployed'}</span></div>
       <div class="small muted" style="margin:6px 0 8px">Invoke over HTTP — same least-privilege spec, guardrails, HITL gate and tracing apply.</div>
       <pre>curl -X POST http://localhost:8000/api/agents/${encodeURIComponent(s.name)}/invoke \\
-  -H "X-Tenant: ${esc(tenant())}" \\
   -H "Content-Type: application/json" \\
   -d '{"inputs": {"company": "Stripe"}}'</pre>
       <details style="margin-top:12px"><summary>Role prompt</summary><pre>${esc(s.role_prompt)}</pre></details>
@@ -880,7 +890,7 @@ async function renderCredentials(m){
   // Tools & required credentials — which key each tool needs and whether it's configured here.
   const reqCard=el(`<div class="card" style="overflow:hidden"><div style="padding:14px 16px 4px">
     <h3 style="margin:0">Tools &amp; required credentials</h3>
-    <div class="sub">Configure a tool's key here and every agent that uses it goes live — per tenant, encrypted.</div></div>
+    <div class="sub">Configure a tool's key here and every agent that uses it goes live — encrypted for this workspace.</div></div>
     <table><thead><tr><th>Tool</th><th>Credential</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>`);
   const rtb=reqCard.querySelector('tbody');
   reqs.forEach(t=>{
@@ -902,7 +912,7 @@ async function renderCredentials(m){
   m.appendChild(reqCard);
 
   // Stored credentials
-  m.appendChild(el('<div class="page-head" style="margin-top:20px"><div><h3 style="margin:0">Stored credentials</h3><div class="sub">Encrypted secrets saved for this tenant.</div></div></div>'));
+  m.appendChild(el('<div class="page-head" style="margin-top:20px"><div><h3 style="margin:0">Stored credentials</h3><div class="sub">Encrypted secrets saved for this workspace.</div></div></div>'));
   if(!creds.length){m.appendChild(el('<div class="card"><div class="empty"><div class="small">No credentials stored yet — use “Configure” above, or add an MCP server credential.</div></div></div>'));return;}
   const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Reference</th><th>Added by</th><th>When</th><th></th></tr></thead><tbody></tbody></table></div>');
   const tb=card.querySelector('tbody');
@@ -922,7 +932,7 @@ async function renderCredentials(m){
 function openCredForm(prefRef,prefLabel){
   const titled=prefLabel?esc(prefLabel):'Add credential';
   openDrawer(`<div class="dh"><span class="li-ic" style="background:#13386b;width:38px;height:38px">${I.key}</span>
-    <div style="flex:1"><h3>${titled}</h3><div class="small muted">tenant ${esc(tenant())} · encrypted at rest</div></div>
+    <div style="flex:1"><h3>${titled}</h3><div class="small muted">Encrypted at rest</div></div>
     <button class="iconbtn" onclick="closeDrawer()">✕</button></div>
     <div class="db">
       <label class="fld">Reference name</label>
@@ -947,7 +957,7 @@ async function renderMcp(m){
   const list=await api('/mcp');
   m.innerHTML='';
   m.appendChild(el(`<div class="page-head"><div><h1>MCP servers</h1>
-    <div class="sub">Tenant-scoped Model Context Protocol servers. Once approved, a server's real tools appear in the agent <b>tool picker</b> (Create / Edit) — tick them to grant, least-privilege intact.</div></div>
+    <div class="sub">Workspace-scoped Model Context Protocol servers. Once approved, a server's real tools appear in the agent <b>tool picker</b> (Create / Edit) — tick them to grant, least-privilege intact.</div></div>
     <div class="actions"><button class="btn primary" id="add">${I.plus} Add MCP server</button></div></div>`));
   m.querySelector('#add').onclick=()=>openMcpForm();
   if(!list.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No MCP servers yet</div><div class="small">Add one to expose external tools (Bloomberg, email, …) to your agents.</div></div></div>'));return;}
@@ -960,7 +970,7 @@ async function renderMcp(m){
 }
 function openMcpForm(){
   openDrawer(`<div class="dh"><span class="li-ic" style="background:#13386b;width:38px;height:38px">${I.mcp}</span>
-    <div style="flex:1"><h3>Add MCP server</h3><div class="small muted">scoped to tenant ${esc(tenant())}</div></div>
+    <div style="flex:1"><h3>Add MCP server</h3><div class="small muted">Scoped to this workspace</div></div>
     <button class="iconbtn" onclick="closeDrawer()">✕</button></div>
     <div class="db">
       <label class="fld">Server name</label><input id="mname" placeholder="e.g. acme_crm">
@@ -999,7 +1009,7 @@ async function renderGuardrails(m){
     ['Prompt-injection defense','Untrusted tool output (web, MCP, documents) and the free-text field are injection-scanned; matches are quarantined as data, never executed.','bad'],
     ['Least privilege','An agent may call only its compiled allow-list and read/write only its own + declared upstream memory scope. The validator resets anything wider.','navy'],
     ['Human-in-the-loop gate','Side-effecting tools pause for sign-off before firing; flagged output routes through a compliance overseer.','warn'],
-    ['Tenant isolation','Specs, memory, logs, runs and MCP servers are scoped per tenant — and an optional bearer token can make the tenant header unspoofable.','ok'],
+    ['Workspace isolation','Specs, memory, logs, runs and MCP servers stay separated by workspace and authenticated session.','ok'],
     ['Immutable audit','Create / run / approve / MCP-registration events are appended to a tamper-evident audit trail.','navy'],
   ];
   const g=el('<div class="gallery"></div>');
@@ -1435,64 +1445,63 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});
 function setTenant(t){
   const sel=document.getElementById('tenant');
   if(![...sel.options].some(o=>o.value===t)) sel.appendChild(el(`<option>${esc(t)}</option>`));
-  sel.value=t; document.getElementById('avatar').textContent=(t||'A')[0].toUpperCase();
+  sel.value=t;
 }
-function showLogin(){
-  closeDrawer();
+function setCurrentUser(username){
+  const box=document.getElementById('userbox'), lab=document.getElementById('usernameLabel'), av=document.getElementById('avatar');
+  if(!username){box.style.display='none';lab.textContent='';av.textContent='A';return;}
+  box.style.display='flex'; lab.textContent=username; av.textContent=initials(username).slice(0,2)||username[0].toUpperCase();
+  box.title='Signed in as '+username;
+}
+function showAuth(mode='signin'){
+  closeDrawer(); setCurrentUser('');
+  document.getElementById('side').innerHTML='';
+  const isSignup=mode==='signup';
   document.getElementById('main').innerHTML=`
-    <div style="max-width:380px;margin:8vh auto">
+    <div style="max-width:410px;margin:8vh auto">
       <div class="card pad">
         <div style="text-align:center;margin-bottom:16px">
           <div class="li-ic" style="background:linear-gradient(135deg,#0b2545,#13386b);width:46px;height:46px;margin:0 auto 10px;font-size:18px">F</div>
-          <h2>Sign in to Fingent</h2><div class="small muted">Agentic platform for financial services</div></div>
+          <h2>${isSignup?'Create your Fingent account':'Sign in to Fingent'}</h2><div class="small muted">Agentic platform for financial services</div></div>
+        <div class="auth-tabs"><button id="tabSignIn" class="${!isSignup?'active':''}" type="button">Sign in</button><button id="tabSignUp" class="${isSignup?'active':''}" type="button">Sign up</button></div>
         <label class="fld">Username</label><input id="lu" placeholder="Username" autocomplete="username">
-        <label class="fld">Password</label><input id="lp" type="password" placeholder="Password" autocomplete="current-password">
+        <label class="fld">Password</label><input id="lp" type="password" placeholder="Password" autocomplete="${isSignup?'new-password':'current-password'}">
         <div id="lerr"></div>
-        <button class="btn primary" id="lbtn" style="width:100%;justify-content:center;margin-top:16px">Sign in</button>
+        <button class="btn primary" id="lbtn" style="width:100%;justify-content:center;margin-top:16px">${isSignup?'Create account':'Sign in'}</button>
       </div></div>`;
+  document.getElementById('tabSignIn').onclick=()=>showAuth('signin');
+  document.getElementById('tabSignUp').onclick=()=>showAuth('signup');
   const go=async()=>{
     const lerr=document.getElementById('lerr'); lerr.innerHTML='';
     try{
-      const r=await api('/login',{method:'POST',body:JSON.stringify({
-        username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
+      const body={username:document.getElementById('lu').value.trim(),password:document.getElementById('lp').value};
+      const r=await api(isSignup?'/signup':'/login',{method:'POST',body:JSON.stringify(body)});
       try{sessionStorage.setItem('fin_token',r.token);}catch(_){}
-      setTenant(r.tenant); boot();
+      setCurrentUser(r.username||body.username); setTenant(r.tenant); boot();
     }catch(e){ lerr.innerHTML=`<div class="note bad" style="margin-top:12px">${esc(e.message||e)}</div>`; }
   };
   document.getElementById('lbtn').onclick=go;
   document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')go();});
 }
-document.getElementById('avatar').onclick=async()=>{
+const showLogin=()=>showAuth('signin');
+document.getElementById('logoutBtn').onclick=async()=>{
   if(!authToken())return;
-  if(confirm('Sign out of Fingent?')){try{await api('/logout',{method:'POST'});}catch(_){}try{sessionStorage.removeItem('fin_token');}catch(_){}showLogin();}
+  if(confirm('Sign out of Fingent?')){try{await api('/logout',{method:'POST'});}catch(_){}try{sessionStorage.removeItem('fin_token');}catch(_){}showAuth('signin');}
 };
 function applyTenantMode(realTenant){
-  // The X-Tenant header only switches tenant when the server explicitly allows it. In the safe
-  // default the tenant is fixed by the session/default — so show it as a locked label instead of
-  // a free switcher that silently does nothing.
-  const box=document.querySelector('.tenant'); const sel=document.getElementById('tenant');
   if(realTenant) setTenant(realTenant);
-  if(STATE.allowHeaderTenant){ sel.disabled=false; return; }
-  sel.innerHTML=`<option>${esc(realTenant||'acme')}</option>`; sel.value=realTenant||'acme';
-  sel.disabled=true; sel.style.cursor='default'; sel.title='Tenant is fixed by your session';
-  const lab=box&&box.querySelector('label'); if(lab) lab.textContent='Tenant';
 }
 async function boot(){
-  document.getElementById('avatar').textContent=tenant()[0].toUpperCase();
   let cfg={auth_required:false};
   try{cfg=await api('/config');}catch(_){}
   STATE.modelConfigured=(cfg.model_configured!==false); STATE.modelName=cfg.model_name||null;
   STATE.allowHeaderTenant=!!cfg.allow_header_tenant;
   let realTenant=cfg.default_tenant||'acme'; let principal='';
-  if(cfg.auth_required){
-    if(!authToken()) return showLogin();
-    try{const me=await api('/me');realTenant=me.tenant;principal=me.principal||'';}
-    catch(_){try{sessionStorage.removeItem('fin_token');}catch(__){}return showLogin();}
-  }
+  if(!authToken()) return showAuth('signin');
+  try{const me=await api('/me');realTenant=me.tenant;principal=me.principal||'';}
+  catch(_){try{sessionStorage.removeItem('fin_token');}catch(__){}return showAuth('signin');}
   // make the avatar's logout affordance discoverable when signed in
-  const av=document.getElementById('avatar');
-  av.title=authToken()?('Signed in'+(principal?' as '+principal:'')+' — click to sign out'):'';
-  if(authToken()&&principal) av.textContent=principal[0].toUpperCase();
+  setCurrentUser(principal||'user');
   applyTenantMode(realTenant);
   render();
 }

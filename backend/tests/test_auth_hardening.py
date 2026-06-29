@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 import fingent.auth as auth
 from fingent.store import Store
+from fastapi.testclient import TestClient
 
 
 def test_hash_roundtrip_and_plaintext_rejection():
@@ -29,6 +30,47 @@ def test_session_expiry():
     assert st.get_session("t_expired") is None           # and purged
     st.create_session("t_forever", "acme", "u", ["admin"])
     assert st.get_session("t_forever") is not None       # no ttl -> never expires
+
+
+def test_signup_creates_hashed_user_and_session(monkeypatch):
+    import importlib
+    monkeypatch.setenv("FINGENT_DB", ":memory:")
+    import fingent.app as app
+    app = importlib.reload(app)
+    c = TestClient(app.app)
+    r = c.post("/api/signup", json={"username": "keerthi", "password": "pass123"})
+    assert r.status_code == 200, r.text
+    tok = r.json()["token"]
+    me = c.get("/api/me", headers={"Authorization": f"Bearer {tok}"}).json()
+    assert me["principal"] == "keerthi" and me["tenant"].startswith("user_keerthi_")
+    stored = app.fp.store.get_user("keerthi")
+    assert auth.password_is_hashed(stored["password"])
+    assert c.post("/api/signup", json={"username": "keerthi", "password": "pass123"}).status_code == 409
+
+
+def test_signup_users_share_templates_but_not_agents(monkeypatch):
+    import importlib
+    monkeypatch.setenv("FINGENT_DB", ":memory:")
+    import fingent.app as app
+    app = importlib.reload(app)
+    c = TestClient(app.app)
+    alice = c.post("/api/signup", json={"username": "alice", "password": "pass123"}).json()
+    bob = c.post("/api/signup", json={"username": "bob", "password": "pass123"}).json()
+    assert alice["tenant"] != bob["tenant"]
+    ha = {"Authorization": f"Bearer {alice['token']}"}
+    hb = {"Authorization": f"Bearer {bob['token']}"}
+
+    alice_templates = {t["name"] for t in c.get("/api/templates", headers=ha).json()}
+    bob_templates = {t["name"] for t in c.get("/api/templates", headers=hb).json()}
+    assert alice_templates == bob_templates and "fraud_anomaly" in alice_templates
+
+    r = c.post("/api/agents", headers=ha,
+               json={"template": "fraud_anomaly", "answers": {"name": "alice_fraud"}})
+    assert r.status_code == 200, r.text
+    alice_agents = {s["name"] for s in c.get("/api/agents", headers=ha).json()}
+    bob_agents = {s["name"] for s in c.get("/api/agents", headers=hb).json()}
+    assert "alice_fraud" in alice_agents
+    assert "alice_fraud" not in bob_agents
 
 
 def test_login_lockout_helpers():

@@ -204,6 +204,10 @@ _MIGRATIONS: list[tuple[int, str, list[str]]] = [
             embedder TEXT, dim INTEGER, vec TEXT, ts REAL)""",
         "CREATE INDEX IF NOT EXISTS ix_memories_ns ON memories(tenant_id, agent)",
     ]),
+    (6, "local_users", [
+        """CREATE TABLE IF NOT EXISTS users(
+            username TEXT PRIMARY KEY, password TEXT, tenant_id TEXT, roles TEXT, created REAL)""",
+    ]),
 ]
 
 
@@ -347,6 +351,22 @@ class Store:
     def delete_session(self, token: str) -> None:
         self.db.execute("DELETE FROM sessions WHERE token=?", (token,))
         self.db.commit()
+
+    # ----- local users ---------------------------------------------------- #
+    def create_user(self, username: str, password_hash: str, tenant_id: str,
+                    roles: list[str]) -> None:
+        self._upsert("users", {"username": username, "password": password_hash,
+                              "tenant_id": tenant_id, "roles": json.dumps(roles),
+                              "created": _now()}, ("username",))
+
+    def get_user(self, username: str) -> dict | None:
+        r = self.db.execute(
+            "SELECT username,password,tenant_id,roles FROM users WHERE username=?",
+            (username,)).fetchone()
+        if not r:
+            return None
+        return {"username": r["username"], "password": r["password"],
+                "tenant": r["tenant_id"], "roles": json.loads(r["roles"] or "[]")}
 
     # ----- deploy tokens -------------------------------------------------- #
     def create_deploy_token(self, token: str, tenant_id: str, agent: str, label: str = "") -> None:

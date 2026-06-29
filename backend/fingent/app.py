@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json as _json
 import os
+import hashlib as _hashlib
+import re as _re
 import time as _time
 
 from contextlib import asynccontextmanager
@@ -150,11 +152,11 @@ def _context(authorization: str | None, x_tenant: str | None) -> _Ctx:
     """Resolve the caller into a tenant + roles. With auth enabled the bearer token (session or
     service token) is authoritative. In open dev mode everyone is an admin of the default tenant
     (or the X-Tenant header's tenant, only if explicitly allowed)."""
+    token = _bearer(authorization)
+    sess = fp.store.get_session(token)
+    if sess:
+        return _Ctx(sess["tenant_id"], sess["roles"], sess["username"])
     if _AUTH_REQUIRED:
-        token = _bearer(authorization)
-        sess = fp.store.get_session(token)
-        if sess:
-            return _Ctx(sess["tenant_id"], sess["roles"], sess["username"])
         svc = _service_token_ctx(token)
         if svc:
             return svc
@@ -205,6 +207,23 @@ class LoginBody(BaseModel):
     password: str
 
 
+class SignupBody(BaseModel):
+    username: str
+    password: str
+    tenant: str | None = None
+
+
+def _workspace_for_username(username: str) -> str:
+    """Give every self-serve signup a private hidden workspace."""
+    base = _re.sub(r"[^a-z0-9]+", "_", username.lower()).strip("_") or "user"
+    suffix = _hashlib.sha256(username.lower().encode("utf-8")).hexdigest()[:8]
+    return f"user_{base[:24]}_{suffix}"
+
+
+def _user_record(username: str) -> dict | None:
+    return _USERS.get(username) or fp.store.get_user(username)
+
+
 def _login_locked(username: str) -> float:
     """Return seconds remaining on a lockout for this username, or 0 if not locked."""
     with _login_lock:
@@ -235,7 +254,7 @@ def login(body: LoginBody):
     locked = _login_locked(body.username)
     if locked > 0:
         raise HTTPException(429, f"too many attempts; locked for {int(locked)}s")
-    u = _USERS.get(body.username)
+    u = _user_record(body.username)
     ok = bool(u) and auth.verify_password(
         body.password, str(u.get("password", "")), allow_plaintext=not _SECURE)
     if not ok:
@@ -250,6 +269,24 @@ def login(body: LoginBody):
     fp.store.create_session(token, tenant, body.username, roles, ttl_seconds=_SESSION_TTL)
     fp.store.audit(tenant, body.username, "login", body.username, {"roles": roles})
     return {"token": token, "tenant": tenant, "username": body.username, "roles": roles}
+
+
+@app.post("/api/signup")
+def signup(body: SignupBody):
+    username = body.username.strip()
+    if len(username) < 3:
+        raise HTTPException(400, "username must be at least 3 characters")
+    if len(body.password) < 4:
+        raise HTTPException(400, "password must be at least 4 characters")
+    if _user_record(username):
+        raise HTTPException(409, "username already exists")
+    tenant = _workspace_for_username(username)
+    roles = ["admin"]
+    fp.store.create_user(username, auth.hash_password(body.password), tenant, roles)
+    token = auth.new_token()
+    fp.store.create_session(token, tenant, username, roles, ttl_seconds=_SESSION_TTL)
+    fp.store.audit(tenant, username, "signup", username, {"roles": roles})
+    return {"token": token, "tenant": tenant, "username": username, "roles": roles}
 
 
 @app.post("/api/logout")
