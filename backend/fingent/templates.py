@@ -65,7 +65,7 @@ CATALOG: list[AgentTemplate] = [
         parameters=[_name_param()],
         default_depends_on=[Dependency(agent="icp_matching", type=HARD,
                                        reason="needs matched companies to enrich")],
-        grantable_tools=["enrich_company", "edgar_search", "web_search"],
+        grantable_tools=["enrich_company", "verify_entity", "edgar_search", "web_search"],
     ),
     AgentTemplate(
         name="persona_decision_maker", tier=1,
@@ -109,7 +109,11 @@ CATALOG: list[AgentTemplate] = [
     AgentTemplate(
         name="document_intelligence", tier=2,
         description="OCR + LLM: statements/tax/financials -> structured JSON (foundational).",
-        fixed={"base_role": "Extract structured JSON from financial documents via OCR + parsing."},
+        fixed={"base_role": "Extract structured JSON from financial documents via OCR + parsing, "
+                            "then CROSS-CHECK against real external sources: verify_entity (GLEIF) "
+                            "confirms the named legal entity exists, and company_financials (SEC "
+                            "EDGAR) corroborates extracted figures for public companies — flag any "
+                            "mismatch as a possible forged/inconsistent document."},
         parameters=[_name_param(),
                     TemplateParameter(name="doc_types", type="multi_select",
                                       label="Document types to process",
@@ -117,7 +121,8 @@ CATALOG: list[AgentTemplate] = [
                                                "financial_statements"],
                                       default=["bank_statements", "financial_statements"]),
                     ],
-        grantable_tools=["ocr_extract", "parse_financials"],
+        grantable_tools=["ocr_extract", "parse_financials", "verify_entity",
+                         "company_financials", "edgar_search"],
     ),
     AgentTemplate(
         name="kyc_onboarding", tier=2,
@@ -126,7 +131,8 @@ CATALOG: list[AgentTemplate] = [
         parameters=[_name_param()],
         default_depends_on=[Dependency(agent="document_intelligence", type=SOFT,
                                        reason="uses parsed ID documents when available")],
-        grantable_tools=["identity_verify", "ocr_extract", "ofac_screen", "pep_check", "web_search"],
+        grantable_tools=["identity_verify", "verify_entity", "ocr_extract", "ofac_screen",
+                         "pep_check", "web_search"],
     ),
     AgentTemplate(
         name="aml_sanctions_screening", tier=2,
@@ -141,9 +147,18 @@ CATALOG: list[AgentTemplate] = [
     ),
     AgentTemplate(
         name="credit_underwriting", tier=2,
-        description="Parse financials -> ratios -> risk score (LoanGuard).",
-        fixed={"base_role": "Underwrite credit: parse financials, compute ratios, produce a "
-                            "risk score and a recommendation."},
+        description="Real SEC/EDGAR financials (or uploaded statements) -> ratios -> risk -> decision.",
+        fixed={"base_role":
+               "Underwrite credit and produce an approve / review / decline recommendation.\n"
+               "- For a PUBLIC company (a company name in the input): call company_financials FIRST "
+               "— it returns REAL SEC EDGAR figures (revenue, net income, assets, equity, "
+               "liabilities) and credit ratios (net_margin, debt_to_equity, equity_ratio). Base "
+               "your recommendation on those real numbers. If company_financials returned real "
+               "figures, NEVER say 'insufficient data'.\n"
+               "- Only when an actual statement/document is provided: use parse_financials -> "
+               "compute_ratios -> risk_score on it.\n"
+               "- Reason explicitly about leverage (debt_to_equity), profitability (net_margin) and "
+               "solvency (equity_ratio) versus the configured risk threshold, then decide."},
         parameters=[
             _name_param(),
             TemplateParameter(name="doc_types", type="multi_select",
@@ -158,14 +173,18 @@ CATALOG: list[AgentTemplate] = [
         default_depends_on=[Dependency(agent="document_intelligence", type=HARD,
                                        reason="needs parsed financial documents")],
         default_guardrails=GuardrailPolicy(output_review_required=True),
-        grantable_tools=["parse_financials", "compute_ratios", "risk_score", "web_search"],
+        grantable_tools=["company_financials", "treasury_rates", "parse_financials",
+                         "compute_ratios", "risk_score", "web_search"],
     ),
     AgentTemplate(
         name="fraud_anomaly", tier=2,
-        description="Rules + anomaly detection over transactions.",
-        fixed={"base_role": "Detect fraud via rules + anomaly detection over transactions."},
+        description="Anomaly detection + real counterparty sanctions screening.",
+        fixed={"base_role": "Detect fraud: run anomaly_detect over the transactions, AND screen the "
+                            "counterparty/beneficiary name against real OFAC sanctions (ofac_screen) "
+                            "and, when a bank is named, verify it via bank_lookup (FDIC). Escalate "
+                            "high-z-score anomalies or any sanctions hit."},
         parameters=[_name_param()],
-        grantable_tools=["anomaly_detect"],
+        grantable_tools=["anomaly_detect", "ofac_screen", "bank_lookup"],
     ),
     AgentTemplate(
         name="compliance_monitoring", tier=2,
@@ -178,10 +197,14 @@ CATALOG: list[AgentTemplate] = [
     ),
     AgentTemplate(
         name="servicing_support", tier=2,
-        description="Account inquiries.",
-        fixed={"base_role": "Answer account servicing inquiries."},
+        description="Account servicing with real bank (FDIC) + rate (Treasury) + FX data.",
+        fixed={"base_role": "Answer account servicing inquiries. Use real external data: bank_lookup "
+                            "(FDIC institution profile), treasury_rates (benchmark rates) and fx_rate "
+                            "(currency conversion). For customer-specific balances/transactions, use "
+                            "account_lookup — which requires a connected core-banking endpoint/MCP and "
+                            "fails loudly if none is configured (never invents balances)."},
         parameters=[_name_param()],
-        grantable_tools=["account_lookup", "web_search"],
+        grantable_tools=["account_lookup", "bank_lookup", "treasury_rates", "fx_rate", "web_search"],
     ),
     AgentTemplate(
         name="guardrail_compliance_overseer", tier=2,
@@ -204,17 +227,17 @@ _REQUIRED_TOOLS = {
     "planner": [],
     "signal_trigger": ["news_monitor", "edgar_search"],
     "icp_matching": ["enrich_company"],
-    "enrichment_validation": ["enrich_company", "edgar_search"],
+    "enrichment_validation": ["enrich_company", "verify_entity", "edgar_search"],
     "persona_decision_maker": ["find_persona"],
     "contact": ["resolve_contact"],
     "synthesis": ["compose_summary"],
-    "document_intelligence": ["ocr_extract", "parse_financials"],
-    "kyc_onboarding": ["identity_verify", "ocr_extract", "ofac_screen", "pep_check"],
+    "document_intelligence": ["ocr_extract", "parse_financials", "verify_entity"],
+    "kyc_onboarding": ["identity_verify", "verify_entity", "ocr_extract", "ofac_screen", "pep_check"],
     "aml_sanctions_screening": ["ofac_screen", "adverse_media_search", "pep_check"],
-    "credit_underwriting": ["parse_financials", "compute_ratios", "risk_score"],
-    "fraud_anomaly": ["anomaly_detect"],
+    "credit_underwriting": ["company_financials", "parse_financials", "compute_ratios", "risk_score"],
+    "fraud_anomaly": ["anomaly_detect", "ofac_screen"],
     "compliance_monitoring": ["reg_feed_ingest"],
-    "servicing_support": ["account_lookup"],
+    "servicing_support": ["bank_lookup", "treasury_rates"],
     "guardrail_compliance_overseer": ["compliance_check"],
 }
 for _tpl in CATALOG:
@@ -222,7 +245,11 @@ for _tpl in CATALOG:
 
 
 def load_catalog(store) -> None:
-    """Idempotently load the built-in templates into the store."""
+    """Refresh the built-in templates in the store to match the code-defined CATALOG.
+
+    Built-in templates are CODE, not user data, so they are re-saved on every startup — otherwise
+    a persisted DB would pin stale definitions and never pick up new tools / grant wiring (a real
+    upgrade trap). User-crystallized templates ('custom_*', saved under a tenant) are NOT in CATALOG
+    and are left untouched."""
     for tpl in CATALOG:
-        if store.get_template(tpl.name) is None:
-            store.save_template(tpl)
+        store.save_template(tpl)

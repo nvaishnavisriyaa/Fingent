@@ -31,6 +31,16 @@ class ToolDescriptor(BaseModel):
     secrets_ref: list[str] = Field(default_factory=list)  # injected from vault at call time
     tenant_id: str | None = None           # None = global (e.g. native, web_search)
     untrusted_output: bool = False         # output must be treated as data, not instructions
+    parameters: dict = Field(default_factory=dict)  # JSON-schema for the tool's args (LLM tool-calling)
+
+
+class McpToolSpec(BaseModel):
+    """A tool discovered from a live MCP server's `tools/list` (cached so the registry can
+    be rebuilt on restart without immediately reconnecting)."""
+    name: str
+    description: str = ""
+    side_effecting: bool = False
+    input_schema: dict = Field(default_factory=dict)
 
 
 class McpServer(BaseModel):
@@ -39,6 +49,13 @@ class McpServer(BaseModel):
     tenant_id: str                         # MCP servers are tenant-scoped
     approved: bool = False                  # admin must approve before tools can be granted
     secrets_ref: list[str] = Field(default_factory=list)
+    # ---- live-connection state (populated by the real MCP client) ------------ #
+    transport: str = "streamable_http"
+    connection_status: str = "unknown"     # connected | demo | error | unknown
+    connection_error: str = ""
+    server_info: dict = Field(default_factory=dict)   # name/version reported by the server
+    discovered_tools: list[McpToolSpec] = Field(default_factory=list)
+    last_connected: float = 0.0
 
 
 # --------------------------------------------------------------------------- #
@@ -165,6 +182,8 @@ class CreateAgentRequest(BaseModel):
     tenant_id: str
     approve_side_effecting: bool = False    # blanket operator approval for ALL write/pay tools
     approved_side_effecting_tools: list[str] = Field(default_factory=list)  # per-tool approval
+    requested_tools: list[str] = Field(default_factory=list)  # explicit tool picks (incl. MCP);
+    #                                    the validator still disposes anything outside grantable.
 
 
 # --------------------------------------------------------------------------- #

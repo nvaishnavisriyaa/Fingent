@@ -1,0 +1,25 @@
+# Keep the build context lean and free of secrets / local state.
+.git
+.gitignore
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+.venv/
+venv/
+env/
+
+# Local databases — never bake runtime data into the image.
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+_bigtest.txt

@@ -12,25 +12,36 @@ from .compiler import SpecCompiler
 from .dependencies import DependencyResolver
 from .middleware import detect_injection
 from .runtime import AgentRuntime
-from .factory import Factory
 from .planner import Planner
 from .registry import ToolRegistry
+from .jobs import JobRunner
+from . import auth
 from .schemas import AgentSpec, AgentTemplate, CreateAgentRequest, TemplateParameter
 from .store import Store
 from .templates import load_catalog
-from .validators import validate_inputs
+from .validators import validate_inputs, validate_spec
 
 
 class Fingent:
     def __init__(self, db_path: str = ":memory:") -> None:
         self.store = Store(db_path)
+        # bind the encrypted credential vault to this store (real tool credentials at rest)
+        from .vault import vault as _vault
+        _vault.attach_store(self.store)
         self.registry = ToolRegistry(self.store)
         self.compiler = SpecCompiler(self.registry)
         self.resolver = DependencyResolver(self.store)
-        self.factory = Factory(self.registry, self.store)
-        self.planner = Planner(self.factory, self.store)
         self.runtime = AgentRuntime(self.registry, self.store)
+        self.planner = Planner(self.store, self.runtime)
         load_catalog(self.store)
+        # rebuild the in-process MCP tool registry from persisted servers so registered
+        # MCP tools survive a process restart (previously they were lost on restart).
+        self.registry.load_persisted()
+        # bind long-term agent memory to this durable store so recall survives a restart and is
+        # tenant-scoped in SQL (Pinecone takes over automatically when PINECONE_API_KEY is set).
+        from .memory import get_memory as _get_memory
+        _get_memory(self.store)
+        self.jobs = JobRunner(self)
 
     # ----- catalog / form ------------------------------------------------ #
     def templates(self) -> list[AgentTemplate]:
@@ -115,9 +126,6 @@ class Fingent:
         self.store.audit(req.tenant_id, actor, "create", spec.name,
                          {"template": spec.template, "tools": spec.tools})
 
-        # step 7-8: factory build + register implicitly (spec = source of truth)
-        self.factory.build(spec)
-
         # crystallize a from-scratch spec into a reusable template (§5)
         crystallized = None
         if spec.template is None:
@@ -187,49 +195,150 @@ class Fingent:
             return {"ok": False, "message": f"no tier-{tier} agents for tenant"}
         return self.planner.run(tenant_id, specs, inputs)
 
+    def run_supervised(self, tenant_id: str, agent_names: list[str] | None = None,
+                       tier: int | None = None, inputs: dict | None = None) -> dict:
+        """Supervised multi-agent run where every sub-agent is a REAL agent (LLM runtime)
+        and the Synthesis agent writes the final prose. Select sub-agents by name or tier."""
+        all_specs = self.store.list_specs(tenant_id)
+        if agent_names:
+            specs = [s for s in all_specs if s.name in agent_names]
+        elif tier is not None:
+            specs = [s for s in all_specs if s.tier == tier]
+        else:
+            specs = all_specs
+        if not specs:
+            return {"ok": False, "message": "no agents matched for supervised run"}
+        return self.planner.run_supervised(tenant_id, specs, inputs)
+
     # ----- admin / MCP --------------------------------------------------- #
-    def register_mcp(self, server, actor: str = "admin") -> list[str]:
-        return self.registry.register_mcp_server(server, actor)
+    def register_mcp(self, server, actor: str = "admin", connect: bool | None = None) -> list[str]:
+        return self.registry.register_mcp_server(server, actor, connect=connect)
+
+    def refresh_mcp(self, tenant_id: str, name: str, actor: str = "admin") -> dict:
+        return self.registry.refresh_mcp_server(tenant_id, name, actor)
 
     # ----- real single-agent execution (playground / deploy / invoke) ---- #
     def run_task(self, tenant_id: str, name: str, user_input,
                  approve_side_effecting: bool = False,
-                 approved_tools: list[str] | None = None) -> dict:
+                 approved_tools: list[str] | None = None,
+                 run_id: str | None = None) -> dict:
         spec = self.store.get_spec(tenant_id, name)
         if spec is None:
             return {"ok": False, "message": f"no deployed agent '{name}' for this tenant"}
         return self.runtime.run(spec, user_input, tenant_id,
                                 approve_side_effecting=approve_side_effecting,
-                                approved_tools=approved_tools)
+                                approved_tools=approved_tools, run_id=run_id)
+
+    def submit_run(self, tenant_id: str, name: str, inputs: dict,
+                   approve_side_effecting: bool = False,
+                   idempotency_key: str | None = None) -> dict:
+        """Enqueue a run on the DURABLE worker queue and return its run_id immediately, so the
+        HTTP request thread is not held for the agent's tool loop. The run survives a restart
+        (orphan recovery), retries transient failures, and can be cancelled."""
+        if self.store.get_spec(tenant_id, name) is None:
+            return {"ok": False, "message": f"no deployed agent '{name}' for this tenant"}
+        run_id = self.jobs.submit(tenant_id, name, inputs or {}, approve_side_effecting,
+                                  idempotency_key=idempotency_key)
+        job = self.store.get_job(tenant_id, run_id)
+        return {"ok": True, "run_id": run_id, "status": (job or {}).get("status", "queued"),
+                "poll": f"/api/runs/{run_id}"}
+
+    def cancel_run(self, tenant_id: str, run_id: str) -> dict:
+        """Cancel a queued/running job. Queued jobs stop cleanly; a running attempt finishes but
+        is not retried."""
+        ok = self.jobs.cancel(tenant_id, run_id)
+        return {"ok": ok, "run_id": run_id, "status": "cancelled" if ok else "not_cancellable"}
+
+    def job_status(self, tenant_id: str, run_id: str) -> dict | None:
+        return self.store.get_job(tenant_id, run_id)
+
+    # ----- deployment lifecycle ------------------------------------------ #
+    def deploy_agent(self, tenant_id: str, name: str, actor: str = "operator",
+                     label: str = "default") -> dict:
+        """Mark an agent deployed and provision a per-agent invocation token. The token
+        authorizes calling ONLY this agent, so each deployed agent is an independently
+        callable, credentialed endpoint."""
+        if self.store.get_spec_any(tenant_id, name) is None:
+            return {"ok": False, "message": "agent not found"}
+        self.store.set_enabled(tenant_id, name, True)
+        token = auth.new_token()
+        self.store.create_deploy_token(token, tenant_id, name, label)
+        self.store.audit(tenant_id, actor, "deploy", name, {"label": label})
+        return {"ok": True, "name": name, "status": "deployed", "token": token,
+                "endpoint": f"/api/agents/{name}/invoke"}
+
+    def undeploy_agent(self, tenant_id: str, name: str, actor: str = "operator") -> dict:
+        self.store.set_enabled(tenant_id, name, False)
+        revoked = self.store.revoke_deploy_tokens(tenant_id, name)
+        self.store.audit(tenant_id, actor, "undeploy", name, {"revoked_tokens": revoked})
+        return {"ok": True, "name": name, "status": "undeployed", "revoked_tokens": revoked}
 
     def resolve_review(self, tenant_id: str, run_id: str, decision: str,
                        reviewer: str = "reviewer", note: str = "") -> dict:
-        """Approve or reject a run that is waiting on human review. Approval executes any
-        held side-effecting action; rejection cancels it. Status is saved to run history."""
+        """Approve or reject a run waiting on human review.
+
+        Approval is a GOVERNED RESUME, never a raw tool fire: the run re-enters the one agent
+        kernel with the held tool pre-approved, so the action executes through the same
+        `_govern_and_invoke` controls (least-privilege, injection scan, PII redaction, audit,
+        risk re-score) and the agent then continues to a governed final answer. Rejection
+        cancels the held action and records the reviewer's reason.
+        """
         rec = self.store.get_run(tenant_id, run_id)
         if rec is None:
             return {"ok": False, "message": "run not found"}
+        pending = rec.get("pending_action") or {}
+
+        # ---- reject: cancel the held action, record the reason + counterfactual ---------- #
+        if decision != "approve":
+            rec["status"] = "rejected"
+            rec["reviewer"] = reviewer
+            rec["review_note"] = note
+            rec["review_decision"] = "rejected"
+            rec["pending_action"] = None
+            if pending.get("tool"):
+                rec.setdefault("steps", []).append({
+                    "idx": len(rec.get("steps", [])), "kind": "review", "tool": pending["tool"],
+                    "tool_input": pending.get("args"), "blocked": True, "latency_ms": 0.0,
+                    "note": (f"REJECTED by {reviewer}: held action '{pending['tool']}' was NOT "
+                             f"executed. {note}").strip()})
+            self.store.save_run(rec)
+            self.store.audit(tenant_id, reviewer, "reject", run_id,
+                             {"agent": rec.get("agent"), "note": note,
+                              "cancelled_action": pending.get("tool")})
+            return {"ok": True, "run": rec}
+
+        # ---- approve a HELD TOOL: resume through the governed kernel ---------------------- #
+        spec = self.store.get_spec(tenant_id, rec.get("agent", ""))
+        if pending.get("tool") and spec is not None:
+            resumed = self.runtime.run(
+                spec, rec.get("input") or {}, tenant_id,
+                approved_tools=[pending["tool"]], run_id=run_id)   # same record, tool approved
+            resumed["reviewer"] = reviewer
+            resumed["review_note"] = note
+            resumed["review_decision"] = "approved"
+            resumed["approved_tool"] = pending["tool"]
+            # if the governed resume finished without pausing again, record the human approval;
+            # if it paused again (chained side-effect / high risk), keep needs_review (honest)
+            if resumed.get("status") == "success":
+                resumed["status"] = "approved"
+            self.store.save_run(resumed)
+            self.store.audit(tenant_id, reviewer, "approve", run_id,
+                             {"agent": rec.get("agent"), "approved_tool": pending["tool"],
+                              "resumed_status": resumed.get("status")})
+            return {"ok": True, "run": resumed, "resumed": True}
+
+        # ---- approve an OUTPUT/RISK review (no held tool): human signs off on the already
+        #      governed output. Re-running would just re-pause, so we don't. ---------------- #
+        rec["status"] = "approved"
         rec["reviewer"] = reviewer
         rec["review_note"] = note
-        if decision == "approve":
-            pending = rec.get("pending_action")
-            if pending:
-                fn = self.registry.callable(pending["tool"])
-                try:
-                    out = fn(**(pending.get("args") or {})) if fn else {"error": "no callable"}
-                except Exception as e:  # noqa: BLE001
-                    out = {"error": str(e)}
-                rec.setdefault("steps", []).append({
-                    "idx": len(rec.get("steps", [])), "kind": "tool", "tool": pending["tool"],
-                    "tool_input": pending.get("args"), "tool_output": out,
-                    "note": "executed after human approval", "blocked": False, "latency_ms": 0.0})
-                rec["output"] = out
-                rec["pending_action"] = None
-            rec["status"] = "approved"
-        else:
-            rec["status"] = "rejected"
+        rec["review_decision"] = "approved"
+        if pending.get("tool") and spec is None:
+            rec["review_note"] = (note + " | NOTE: agent spec unavailable; held action not "
+                                  "executed.").strip(" |")
+        rec["pending_action"] = None
         self.store.save_run(rec)
-        self.store.audit(tenant_id, reviewer, decision, run_id, {"agent": rec.get("agent")})
+        self.store.audit(tenant_id, reviewer, "approve", run_id, {"agent": rec.get("agent")})
         return {"ok": True, "run": rec}
 
     # ----- agent lifecycle (view / edit / duplicate / delete) ------------ #
@@ -250,10 +359,55 @@ class Fingent:
                 data[k] = patch[k]
         if isinstance(patch.get("guardrails"), dict):
             data["guardrails"].update({k: v for k, v in patch["guardrails"].items() if v is not None})
+
+        # Editing the agent's TOOLS (add/remove native or MCP tools) goes through the SAME
+        # validator as creation, so least-privilege, the side-effecting-tool approval gate and the
+        # injection-check floor all hold. The picked tools can never widen privilege past the
+        # tenant's grantable universe.
+        stripped: list[str] = []
+        if "tools" in patch and isinstance(patch["tools"], list):
+            tpl = self.store.get_template(spec.template) if spec.template else None
+            candidate = dict(data)
+            candidate["tools"] = list(dict.fromkeys(patch["tools"]))
+            new_spec, verdict = validate_spec(
+                candidate, tpl, self.registry, tenant_id,
+                approve_side_effecting=bool(patch.get("approve_side_effecting", False)),
+                approved_tools=patch.get("approved_side_effecting_tools", []))
+            if new_spec is None:
+                return {"ok": False, "message": "; ".join(verdict.errors) or "invalid tool set"}
+            data["tools"] = new_spec.tools
+            data["security"] = new_spec.security.model_dump()
+            data["guardrails"] = new_spec.guardrails.model_dump()
+            stripped = verdict.stripped
+
         new = AgentSpec.model_validate(data)
         self.store.save_spec(new)
-        self.store.audit(tenant_id, actor, "edit", name, {"fields": list(patch.keys())})
-        return {"ok": True, "spec": new.model_dump()}
+        self.store.audit(tenant_id, actor, "edit", name,
+                         {"fields": list(patch.keys()), "stripped": stripped})
+        return {"ok": True, "spec": new.model_dump(), "stripped": stripped}
+
+    def grantable_tools(self, tenant_id: str, template_name: str | None = None) -> list[dict]:
+        """The tool universe an agent of this template (or a from-scratch agent) may be granted —
+        native + the tenant's approved MCP/external tools — enriched for the UI tool picker. This
+        is what makes connecting MCP tools to an agent discoverable (Dify-style), not a guess."""
+        tpl = self.store.get_template(template_name) if template_name else None
+        if tpl is not None:
+            names = self.registry.effective_grantable(tpl.grantable_tools, tenant_id)
+            default = set(tpl.fixed.get("required_tools", []) or [])
+        else:
+            names = self.registry.grantable_for_tenant(tenant_id)
+            default = set()
+        out = []
+        for n in dict.fromkeys(names):
+            d = self.registry.get(n)
+            if d is None:
+                continue
+            out.append({"name": d.name, "kind": d.kind.value, "description": d.description,
+                        "side_effecting": d.side_effecting,
+                        "untrusted_output": getattr(d, "untrusted_output", False),
+                        "mcp_server": getattr(d, "mcp_server", None),
+                        "default": d.name in default})
+        return out
 
     def duplicate_agent(self, tenant_id: str, name: str, new_name: str,
                         actor: str = "operator") -> dict:
@@ -283,47 +437,36 @@ class Fingent:
         ]
 
     def analytics(self, tenant_id: str, days: int = 7) -> dict:
-        """Aggregate run metrics for the monitoring dashboard. Computed from stored
-        traces + structured run logs; everything is tenant-scoped (§10)."""
+        """Monitoring rollups, computed in SQL over indexed columns + a LIGHT metrics projection
+        (never the full trace blobs). Tenant-scoped (§10)."""
         import time
         now = time.time()
         cutoff = now - days * 86400
-        specs = self.store.list_specs(tenant_id)
-        traces = self.store.list_traces(tenant_id)
-        logs = self.store.get_run_logs(tenant_id)
 
-        total_credits = 0.0
-        total_tool_calls = 0
-        guardrail_trips = 0
-        hitl_pauses = 0
-        injection_blocks = 0
+        usage = self.store.usage_totals(tenant_id, cutoff)          # SQL SUM(cost), SUM(tokens)
+        rows = self.store.trace_metrics_since(tenant_id, cutoff)    # light: metrics blob + columns
+
+        total_prompt = total_completion = total_llm_calls = 0
+        total_tool_calls = guardrail_trips = hitl_pauses = 0
+        cost_estimated = False
         over_time: dict[str, float] = {}
-        runs_in_window = 0
-        for tr in traces:
-            ts = tr.get("ts", now)
-            if ts < cutoff:
-                continue
-            runs_in_window += 1
-            m = tr.get("metrics", {}) or {}
-            credits = float(m.get("cost_usd", 0) or 0)
-            total_credits += credits
-            total_tool_calls += sum((m.get("tool_calls") or {}).values())
-            guardrail_trips += int(m.get("guardrail_trips", 0) or 0)
-            hitl_pauses += int(m.get("hitl_pauses", 0) or 0)
-            day = time.strftime("%Y-%m-%d", time.localtime(ts))
-            over_time[day] = round(over_time.get(day, 0.0) + credits, 6)
-
-        for l in logs:
-            if l.get("event") == "injection_blocked":
-                injection_blocks += 1
-
         agent_calls: dict[str, int] = {}
         agent_runs: dict[str, int] = {}
-        for l in logs:
-            if l.get("event") == "completed":
-                a = l.get("agent", "?")
-                agent_calls[a] = agent_calls.get(a, 0) + len(l.get("tools", []))
-                agent_runs[a] = agent_runs.get(a, 0) + 1
+        for r in rows:
+            m = r["metrics"] or {}
+            total_prompt += int(m.get("prompt_tokens", 0) or 0)
+            total_completion += int(m.get("completion_tokens", 0) or 0)
+            total_llm_calls += int(m.get("llm_calls", 0) or 0)
+            tcalls = sum((m.get("tool_calls") or {}).values())
+            total_tool_calls += tcalls
+            guardrail_trips += int(m.get("guardrail_trips", 0) or 0)
+            hitl_pauses += int(m.get("hitl_pauses", 0) or 0)
+            cost_estimated = cost_estimated or bool(m.get("cost_estimated"))
+            day = time.strftime("%Y-%m-%d", time.localtime(r["ts"]))
+            over_time[day] = round(over_time.get(day, 0.0) + r["cost_usd"], 6)
+            a = r["agent"] or "?"
+            agent_calls[a] = agent_calls.get(a, 0) + tcalls
+            agent_runs[a] = agent_runs.get(a, 0) + 1
 
         names = sorted(set(list(agent_calls) + list(agent_runs)))
         breakdown = [{"agent": a, "tool_calls": agent_calls.get(a, 0),
@@ -333,13 +476,20 @@ class Fingent:
 
         return {
             "totals": {
-                "credits": round(total_credits, 4),
+                "credits": round(usage["cost_usd"], 4),
                 "tool_calls": total_tool_calls,
-                "active_agents": len(specs),
-                "runs": runs_in_window,
+                "active_agents": len(self.store.list_specs(tenant_id)),
+                "runs": usage["runs"],
                 "guardrail_trips": guardrail_trips,
                 "hitl_pauses": hitl_pauses,
-                "injection_blocks": injection_blocks,
+                "injection_blocks": 0,
+                "tokens": usage["tokens"],
+                "prompt_tokens": total_prompt,
+                "completion_tokens": total_completion,
+                "llm_calls": total_llm_calls,
+                "cost_estimated": cost_estimated,
+                "cost_basis": ("real LLM usage" if total_llm_calls and not cost_estimated
+                               else ("estimated" if cost_estimated else "no LLM usage yet")),
             },
             "credits_over_time": over,
             "top_agents": top,

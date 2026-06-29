@@ -1,0 +1,43 @@
+# Fingent — one-command run.
+#
+#   docker compose up --build        # SQLite (durable via the named volume)
+#   docker compose --profile postgres up --build   # app + Postgres
+#
+# Configuration comes from a local .env (copy .env.example). Secrets are read from the
+# environment — none are baked into the image.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Durable SQLite on the volume by default. To use Postgres instead, enable the
+      # postgres profile below and set DATABASE_URL (it takes precedence over FINGENT_DB).
+      FINGENT_DB: /data/fingent.db
+      # DATABASE_URL: postgres://fingent:fingent@db:5432/fingent
+    volumes:
+      - fingent_data:/data
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: fingent
+      POSTGRES_PASSWORD: fingent
+      POSTGRES_DB: fingent
+    volumes:
+      - fingent_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fingent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  fingent_data:
+  fingent_pg:

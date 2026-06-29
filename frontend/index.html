@@ -231,7 +231,7 @@ const authToken=()=>{try{return sessionStorage.getItem('fin_token')||'';}catch(_
 const api=(p,o={})=>fetch('/api'+p,{...o,headers:{'Content-Type':'application/json','X-Tenant':tenant(),...(authToken()?{'Authorization':'Bearer '+authToken()}:{}),...(o.headers||{})}})
   .then(async r=>{let d=null;try{d=await r.json();}catch(_){}if(!r.ok){if(r.status===401&&authToken()){try{sessionStorage.removeItem('fin_token');}catch(_){}showLogin();}throw new Error((d&&(d.detail||d.message))||('HTTP '+r.status));}return d;});
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const el=h=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstElementChild;};
+const el=h=>{h=h.trim();const tag=(h.match(/^<([a-z]+)/i)||[])[1]||'';let host;if(/^tr$/i.test(tag)){const t=document.createElement('table');const b=document.createElement('tbody');t.appendChild(b);host=b;}else if(/^(td|th)$/i.test(tag)){const t=document.createElement('table');const b=document.createElement('tbody');const r=document.createElement('tr');b.appendChild(r);t.appendChild(b);host=r;}else if(/^(tbody|thead|tfoot)$/i.test(tag)){host=document.createElement('table');}else{host=document.createElement('div');}host.innerHTML=h;return host.firstElementChild;};
 const fmt=n=>{n=Number(n)||0;return n>=1000?(n/1000).toFixed(n%1000?1:0)+'k':(Number.isInteger(n)?n:n.toFixed(2));};
 const money=n=>'$'+(Number(n)||0).toFixed(2);
 const slug=s=>(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,28)||'agent';
@@ -247,6 +247,7 @@ const I={
  agents:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 8V4M9 13h.01M15 13h.01M2 12v3M22 12v3"/></svg>',
  tools:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 005.4-5.4l-2.3 2.3-2.3-.6-.6-2.3z"/></svg>',
  mcp:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><circle cx="12" cy="12" r="3"/></svg>',
+ key:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/></svg>',
  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>',
  trace:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg>',
  audit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h10l3 3v15H4V3z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>',
@@ -278,6 +279,7 @@ const NAV=[
  {k:'reviews',ic:I.check,t:'Review queue'},
  {k:'toolkits',ic:I.tools,t:'Toolkits'},
  {k:'mcp',ic:I.mcp,t:'MCP servers'},
+ {k:'credentials',ic:I.key,t:'Credentials'},
  {k:'guardrails',ic:I.shield,t:'Guardrails & compliance'},
  {k:'traces',ic:I.trace,t:'Traces'},
  {k:'compiler',ic:I.spark,t:'Compiler log'},
@@ -290,7 +292,7 @@ function renderNav(){
   s.innerHTML='<div class="logo">F</div>';
   NAV.forEach(n=>{
     const b=el(`<button class="navbtn ${STATE.view===n.k?'active':''}">${n.ic}<span class="tip">${n.t}</span></button>`);
-    b.onclick=()=>{STATE.view=n.k;closeDrawer();render();};
+    b.onclick=()=>{if(n.ext){window.location=n.ext;return;}STATE.view=n.k;closeDrawer();render();};
     s.appendChild(b);
   });
   s.appendChild(el('<div class="spacer"></div>'));
@@ -300,7 +302,7 @@ document.getElementById('tenant').onchange=()=>{document.getElementById('avatar'
 
 /* ============================ router ============================ */
 const VIEWS={home:renderHome,playground:renderPlayground,dashboard:renderDashboard,catalog:renderCatalog,
-  agents:renderAgents,runs:renderRuns,reviews:renderReviews,toolkits:renderToolkits,mcp:renderMcp,
+  agents:renderAgents,runs:renderRuns,reviews:renderReviews,toolkits:renderToolkits,mcp:renderMcp,credentials:renderCredentials,
   guardrails:renderGuardrails,traces:renderTraces,compiler:renderCompiler,audit:renderAudit};
 async function render(){
   renderNav();
@@ -424,12 +426,17 @@ async function renderDashboard(m){
   head.querySelector('#days').onchange=e=>{STATE.days=+e.target.value;renderDashboard(m);};
   head.querySelector('#rf').onclick=()=>renderDashboard(m);
 
+  const _estimated=!!t.cost_estimated;
+  const _costLabel=_estimated?'LLM Cost (est.)':'LLM Cost';
+  const _costSub=(t.cost_basis||'')+' · '+(t.llm_calls||0)+' model call'+((t.llm_calls===1)?'':'s');
   const metrics=el(`<div class="metrics">
-    ${metricCard('Total AI Credits',money(t.credits),'credit','navy','across '+t.runs+' run'+(t.runs===1?'':'s'))}
+    ${metricCard(_costLabel,money(t.credits),'credit','navy',_costSub)}
+    ${metricCard('LLM Tokens',fmt(t.tokens||0),'spark','',((t.prompt_tokens||0))+' in / '+((t.completion_tokens||0))+' out')}
     ${metricCard('Total Tool Calls',fmt(t.tool_calls),'bolt','','tool invocations')}
     ${metricCard('Active Agents',fmt(t.active_agents),'spark','green','deployed specs')}
     ${metricCard('Guardrail Trips',fmt(t.guardrail_trips+t.injection_blocks),'shield','warn',t.injection_blocks+' injection block'+(t.injection_blocks===1?'':'s'))}
   </div>`);
+  if(_estimated){const n=el('<div class="note info" style="margin-top:8px">Some runs had no provider token usage; cost shown is <b>estimated</b> for those. Configure model prices via FINGENT_MODEL_PRICING.</div>');body.appendChild(n);}
   body.appendChild(metrics);
 
   // run outcomes (first-class runs)
@@ -445,7 +452,7 @@ async function renderDashboard(m){
   ro.querySelector('#goReviews').onclick=()=>{STATE.view='reviews';render();};
 
   const charts=el(`<div class="grid" style="grid-template-columns:1.3fr 1fr;margin-top:16px">
-    <div class="card pad"><h3>AI Credits Used Over Time</h3><div style="margin-top:10px">${lineChart(a.credits_over_time,'credits')}</div></div>
+    <div class="card pad"><h3>LLM Cost Over Time</h3><div style="margin-top:10px">${lineChart(a.credits_over_time,'credits')}</div></div>
     <div class="card pad"><h3>Top Agents by Tool Calls</h3><div style="margin-top:12px">${barList(a.top_agents,'agent','tool_calls')}</div></div>
   </div>`);
   body.appendChild(charts);
@@ -557,9 +564,11 @@ async function openTemplate(t){
     else f=el(`<input value="${esc(p.default??'')}">`);
     f.dataset.pname=p.name;f.dataset.ptype=p.type;f.className=(f.className||'')+' pfield';ff.appendChild(f);
   });
+  const pick=el('<div id="toolPick" style="margin-top:6px"></div>'); ff.appendChild(pick);
+  mountToolPicker(pick, t.name, null);
   ff.appendChild(el(`<label class="fld">${esc((schema.free_text_field||{}).label||'Additional requirements')}</label>`));
   ff.appendChild(el(`<textarea id="f_free" rows="4" placeholder="${esc((schema.free_text_field||{}).placeholder||'')}"></textarea>`));
-  ff.appendChild(el('<label class="fld" style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="f_side" style="width:auto"> Operator approves side-effecting tools (write / send / pay)</label>'));
+  ff.appendChild(el('<label class="fld" style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="f_side" style="width:auto"> Also approve ALL side-effecting tools (write / send / pay)</label>'));
   const out=el('<div id="formOut" style="margin-top:14px"></div>'); ff.appendChild(out);
   setDrawerFooter(`<button class="btn ghost" onclick="closeDrawer()">Cancel</button>
     <button class="btn primary" id="compileBtn">${I.spark} Compile agent</button>`);
@@ -573,6 +582,43 @@ function guardChips(g){
   c.push(`<span class="tool-chip">max ${g.max_steps||12} steps</span>`);
   return c.join('');
 }
+
+/* ---- tool picker (native + MCP tools, Dify-style explicit per-agent selection) ---- */
+const _PICK_GROUPS={native:'Native FS tools',web_search:'Web',mcp:'MCP — connected servers',external_api:'External APIs'};
+async function mountToolPicker(host,template,selected){
+  host.innerHTML='<div class="muted small" style="padding:6px 0">Loading tools…</div>';
+  let g=[]; try{g=await api('/grantable'+(template?('?template='+encodeURIComponent(template)):''));}
+  catch(_){host.innerHTML='<div class="muted small">Could not load tools.</div>';return;}
+  const sel=selected||new Set(g.filter(x=>x.default).map(x=>x.name));
+  host.innerHTML='';
+  host.appendChild(el(`<label class="fld" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Tools this agent may use</span><span class="muted xs" id="tpCount"></span></label>`));
+  const mcpCount=g.filter(t=>t.kind==='mcp').length;
+  host.appendChild(el(`<div class="muted xs" style="margin:-2px 0 6px">Least-privilege: pick only what it needs. ${mcpCount?`<b>${mcpCount}</b> MCP tool${mcpCount===1?'':'s'} from your connected servers ${mcpCount===1?'is':'are'} available here.`:'Connect an MCP server to add external tools.'}</div>`));
+  const order=['native','web_search','mcp','external_api'], byKind={};
+  g.forEach(t=>{(byKind[t.kind]=byKind[t.kind]||[]).push(t);});
+  order.forEach(k=>{ if(!byKind[k])return;
+    host.appendChild(el(`<div class="muted xs" style="margin:9px 0 3px;text-transform:uppercase;letter-spacing:.4px;font-weight:700">${esc(_PICK_GROUPS[k]||k)}</div>`));
+    byKind[k].forEach(t=>{
+      const se=t.side_effecting?'<span class="pill warn" style="margin-left:6px">side-effecting · approves on tick</span>':'';
+      const un=(t.untrusted_output||t.kind==='mcp'||t.kind==='web_search')&&!t.side_effecting?'<span class="pill" style="margin-left:6px">untrusted output</span>':'';
+      const row=el(`<label style="display:flex;gap:9px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin:5px 0;cursor:pointer">
+        <input type="checkbox" class="tpick" data-tool="${esc(t.name)}" data-side="${t.side_effecting?1:0}" ${sel.has(t.name)?'checked':''} style="width:auto;margin-top:2px">
+        <div style="min-width:0;flex:1"><div style="font-weight:600;font-size:12.5px">${esc(t.name)}${se}${un}</div>
+          <div class="muted xs">${esc(t.description||'')}</div></div></label>`);
+      host.appendChild(row);
+    });
+  });
+  const upd=()=>{const n=host.querySelectorAll('.tpick:checked').length;const c=host.querySelector('#tpCount');if(c)c.textContent=n+' selected';};
+  host.querySelectorAll('.tpick').forEach(c=>c.addEventListener('change',upd)); upd();
+  if(!g.length) host.appendChild(el('<div class="muted small">No grantable tools for this tenant.</div>'));
+}
+function collectPickedTools(host){
+  const picked=[],approvedSide=[];
+  (host||document).querySelectorAll('.tpick:checked').forEach(c=>{
+    picked.push(c.dataset.tool); if(c.dataset.side==='1')approvedSide.push(c.dataset.tool);});
+  return {picked,approvedSide};
+}
 function collectAnswers(){
   const a={name:document.getElementById('f_name').value||'my_agent'};
   document.querySelectorAll('.pfield').forEach(f=>{
@@ -585,8 +631,10 @@ function collectAnswers(){
 }
 async function submitTemplate(name,out,auto){
   out.innerHTML='<div class="note info">Compiling with the LLM, then disposing through the validator…</div>';
+  const picks=collectPickedTools(document.getElementById('toolPick'));
   const body={template:name,answers:collectAnswers(),additional_requirements:document.getElementById('f_free').value,
-    approve_side_effecting:document.getElementById('f_side').checked,auto_provision:auto};
+    approve_side_effecting:document.getElementById('f_side').checked,
+    requested_tools:picks.picked,approved_side_effecting_tools:picks.approvedSide,auto_provision:auto};
   try{
     const r=await api('/agents',{method:'POST',body:JSON.stringify(body)});
     out.innerHTML=resultHtml(r,name);
@@ -718,14 +766,21 @@ function openAgentEdit(s){
     <label class="fld">Risk level</label><select id="edRisk"><option ${s.risk_level==='low'?'selected':''}>low</option><option ${(!s.risk_level||s.risk_level==='medium')?'selected':''}>medium</option><option ${s.risk_level==='high'?'selected':''}>high</option></select>
     <label class="fld">Output format</label><select id="edOut"><option ${s.output_format==='summary'?'selected':''}>summary</option><option ${s.output_format==='json'?'selected':''}>json</option><option ${s.output_format==='recommendation'?'selected':''}>recommendation</option></select>
     <label class="fld" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="edHitl" style="width:auto" ${s.requires_human_review?'checked':''}> Require human review before final output</label>
+    <div class="sep"></div>
+    <div id="edTools" style="margin-top:4px"></div>
     <div id="edErr"></div>`;
+  mountToolPicker(document.getElementById('edTools'), s.template||null, new Set(s.tools||[]));
   setDrawerFooter(`<button class="btn ghost" id="edCancel">Cancel</button><button class="btn primary" id="edSave">Save changes</button>`);
   document.getElementById('edCancel').onclick=()=>openAgent(s);
   document.getElementById('edSave').onclick=async()=>{
+    const picks=collectPickedTools(document.getElementById('edTools'));
     const patch={purpose:document.getElementById('edPurpose').value,instructions:document.getElementById('edInstr').value,
       risk_level:document.getElementById('edRisk').value,output_format:document.getElementById('edOut').value,
-      requires_human_review:document.getElementById('edHitl').checked};
-    try{const r=await api('/agents/'+encodeURIComponent(s.name),{method:'PUT',body:JSON.stringify(patch)});openAgent(r.spec);render();}
+      requires_human_review:document.getElementById('edHitl').checked,
+      tools:picks.picked,approved_side_effecting_tools:picks.approvedSide};
+    try{const r=await api('/agents/'+encodeURIComponent(s.name),{method:'PUT',body:JSON.stringify(patch)});
+      if(r.stripped&&r.stripped.length)document.getElementById('edErr').innerHTML=`<div class="note warn" style="margin-top:10px"><b>Validator adjusted some tools:</b><br>${r.stripped.map(esc).join('<br>')}</div>`;
+      setTimeout(()=>{openAgent(r.spec);render();}, r.stripped&&r.stripped.length?1400:0);}
     catch(e){document.getElementById('edErr').innerHTML=`<div class="note bad" style="margin-top:10px">${esc(e.message||e)}</div>`;}
   };
 }
@@ -813,11 +868,85 @@ async function renderToolkits(m){
 }
 
 /* ============================ MCP ============================ */
+async function renderCredentials(m){
+  const [creds,reqs]=await Promise.all([api('/credentials'),api('/credentials/requirements')]);
+  m.innerHTML='';
+  m.appendChild(el(`<div class="page-head"><div><h1>Credentials</h1>
+    <div class="sub">Encrypted at rest · resolved into tool & MCP calls at runtime · values are never displayed or logged.</div></div>
+    <div class="actions"><button class="btn primary" id="addCred">${I.plus} Add credential</button></div></div>`));
+  m.querySelector('#addCred').onclick=()=>openCredForm();
+
+  // Tools & required credentials — which key each tool needs and whether it's configured here.
+  const reqCard=el(`<div class="card" style="overflow:hidden"><div style="padding:14px 16px 4px">
+    <h3 style="margin:0">Tools &amp; required credentials</h3>
+    <div class="sub">Configure a tool's key here and every agent that uses it goes live — per tenant, encrypted.</div></div>
+    <table><thead><tr><th>Tool</th><th>Credential</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>`);
+  const rtb=reqCard.querySelector('tbody');
+  reqs.forEach(t=>{
+    t.requirements.forEach((r,i)=>{
+      const chip = r.status==='vault' ? '<span class="pill ok">configured · vault</span>'
+                 : r.status==='env' ? '<span class="pill ok">configured · env</span>'
+                 : (r.required ? '<span class="pill bad">required · missing</span>' : '<span class="pill warn">optional</span>');
+      const tr=el(`<tr>
+        <td>${i===0?`<div class="t-name"><span class="li-ic" style="background:${colorFor(t.tool)};width:24px;height:24px;font-size:10px">${initials(t.tool)}</span>${esc(t.tool)}</div>`:''}</td>
+        <td><div class="small"><b>${esc(r.label)}</b></div>
+          <div class="muted xs"><span class="tool-chip">${esc(r.ref)}</span>${r.url?` · <a href="${esc(r.url)}" target="_blank" rel="noopener">get key ↗</a>`:''}</div>
+          <div class="muted xs" style="margin-top:3px">${esc(r.note||'')}</div></td>
+        <td>${chip}</td>
+        <td style="text-align:right"><button class="btn ghost sm">${r.status==='missing'?'Configure':'Update'}</button></td></tr>`);
+      tr.querySelector('button').onclick=()=>openCredForm(r.ref,r.label);
+      rtb.appendChild(tr);
+    });
+  });
+  m.appendChild(reqCard);
+
+  // Stored credentials
+  m.appendChild(el('<div class="page-head" style="margin-top:20px"><div><h3 style="margin:0">Stored credentials</h3><div class="sub">Encrypted secrets saved for this tenant.</div></div></div>'));
+  if(!creds.length){m.appendChild(el('<div class="card"><div class="empty"><div class="small">No credentials stored yet — use “Configure” above, or add an MCP server credential.</div></div></div>'));return;}
+  const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Reference</th><th>Added by</th><th>When</th><th></th></tr></thead><tbody></tbody></table></div>');
+  const tb=card.querySelector('tbody');
+  creds.forEach(c=>{
+    const tr=el(`<tr><td><span class="tool-chip">${esc(c.ref)}</span></td>
+      <td class="muted small">${esc(c.created_by||'—')}</td>
+      <td class="muted small">${c.created?new Date(c.created*1000).toLocaleString():'—'}</td>
+      <td style="text-align:right"><button class="btn ghost sm">${I.trash}</button></td></tr>`);
+    tr.querySelector('button').onclick=async()=>{
+      if(!confirm('Delete credential "'+c.ref+'"? Tools that reference it will stop authenticating.'))return;
+      try{await api('/credentials/'+encodeURIComponent(c.ref),{method:'DELETE'});render();}
+      catch(e){alert(e.message||e);}};
+    tb.appendChild(tr);
+  });
+  m.appendChild(card);
+}
+function openCredForm(prefRef,prefLabel){
+  const titled=prefLabel?esc(prefLabel):'Add credential';
+  openDrawer(`<div class="dh"><span class="li-ic" style="background:#13386b;width:38px;height:38px">${I.key}</span>
+    <div style="flex:1"><h3>${titled}</h3><div class="small muted">tenant ${esc(tenant())} · encrypted at rest</div></div>
+    <button class="iconbtn" onclick="closeDrawer()">✕</button></div>
+    <div class="db">
+      <label class="fld">Reference name</label>
+      <input id="cref" placeholder="e.g. acme:crm_token" value="${esc(prefRef||'')}" ${prefRef?'readonly style="opacity:.75"':''}>
+      <div class="small muted" style="margin:6px 0 4px">${prefRef?'This tool reads the value from this reference. Stored encrypted, never shown again.':'An identifier your tools/MCP servers point at. The value below is stored encrypted and never shown again.'}</div>
+      <label class="fld" style="margin-top:10px">Secret value</label>
+      <input id="cval" type="password" placeholder="API key, token, endpoint URL, or 'Header-Name: value'">
+      <div id="cout" style="margin-top:14px"></div>
+    </div>`);
+  setDrawerFooter(`<button class="btn ghost" onclick="closeDrawer()">Cancel</button><button class="btn primary" id="saveCred">Save</button>`);
+  document.getElementById('saveCred').onclick=async()=>{
+    const ref=document.getElementById('cref').value.trim();
+    const value=document.getElementById('cval').value;
+    const out=document.getElementById('cout');
+    if(!ref||!value){out.innerHTML='<div class="note bad">Reference and value are required.</div>';return;}
+    try{await api('/credentials',{method:'POST',body:JSON.stringify({ref,value})});
+      closeDrawer();STATE.view='credentials';render();}
+    catch(e){out.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+  };
+}
 async function renderMcp(m){
   const list=await api('/mcp');
   m.innerHTML='';
   m.appendChild(el(`<div class="page-head"><div><h1>MCP servers</h1>
-    <div class="sub">Tenant-scoped Model Context Protocol servers. Tools become grantable only after admin approval.</div></div>
+    <div class="sub">Tenant-scoped Model Context Protocol servers. Once approved, a server's real tools appear in the agent <b>tool picker</b> (Create / Edit) — tick them to grant, least-privilege intact.</div></div>
     <div class="actions"><button class="btn primary" id="add">${I.plus} Add MCP server</button></div></div>`));
   m.querySelector('#add').onclick=()=>openMcpForm();
   if(!list.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No MCP servers yet</div><div class="small">Add one to expose external tools (Bloomberg, email, …) to your agents.</div></div></div>'));return;}
@@ -833,17 +962,28 @@ function openMcpForm(){
     <div style="flex:1"><h3>Add MCP server</h3><div class="small muted">scoped to tenant ${esc(tenant())}</div></div>
     <button class="iconbtn" onclick="closeDrawer()">✕</button></div>
     <div class="db">
-      <label class="fld">Server name</label><input id="mname" value="acme_mcp">
-      <label class="fld">URL</label><input id="murl" value="https://mcp.acme.io">
-      <label class="fld" style="display:flex;align-items:center;gap:9px;cursor:pointer;margin-top:14px"><input type="checkbox" id="mappr" checked style="width:auto"> Approved (tools become grantable)</label>
+      <label class="fld">Server name</label><input id="mname" placeholder="e.g. acme_crm">
+      <label class="fld">URL</label><input id="murl" placeholder="https://mcp.yourcompany.com">
+      <label class="fld" style="margin-top:10px">Authentication <span class="muted xs">(optional · stored encrypted)</span></label>
+      <input id="mauth" type="password" placeholder="Bearer <token>   ·   X-Api-Key: <key>   ·   <token>">
+      <div class="small muted" style="margin:6px 0 4px">Saved to the encrypted vault and injected as a request header at call time. Never shown again.</div>
+      <label class="fld" style="display:flex;align-items:center;gap:9px;cursor:pointer;margin-top:12px"><input type="checkbox" id="mappr" checked style="width:auto"> Approved (tools become grantable)</label>
       <div id="mout" style="margin-top:14px"></div>
     </div>`);
   setDrawerFooter(`<button class="btn ghost" onclick="closeDrawer()">Cancel</button><button class="btn primary" id="regBtn">Register</button>`);
   document.getElementById('regBtn').onclick=async()=>{
-    const name=document.getElementById('mname').value,url=document.getElementById('murl').value,approved=document.getElementById('mappr').checked;
-    try{const r=await api('/mcp',{method:'POST',body:JSON.stringify({name,url,approved,secrets_ref:[tenant()+':bloomberg_api_key']})});
-      document.getElementById('mout').innerHTML=`<div class="note ok"><b>Registered ${esc(r.registered)}.</b> Tools added: ${(r.tools_added||[]).map(esc).join(', ')||'(none — approve first)'}</div>`;
-    }catch(e){document.getElementById('mout').innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+    const name=document.getElementById('mname').value.trim();
+    const url=document.getElementById('murl').value.trim();
+    const auth=document.getElementById('mauth').value;
+    const approved=document.getElementById('mappr').checked;
+    const out=document.getElementById('mout');
+    if(!name||!url){out.innerHTML='<div class="note bad">Name and URL are required.</div>';return;}
+    try{
+      let secrets=[];
+      if(auth){const ref=name+':auth';await api('/credentials',{method:'POST',body:JSON.stringify({ref,value:auth})});secrets=[ref];}
+      const r=await api('/mcp',{method:'POST',body:JSON.stringify({name,url,approved,secrets_ref:secrets})});
+      out.innerHTML=`<div class="note ok"><b>Registered ${esc(r.registered)}.</b> Tools added: ${(r.tools_added||[]).map(esc).join(', ')||'(none — approve, or server unreachable)'}</div>`;
+    }catch(e){out.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
   };
 }
 
@@ -868,14 +1008,29 @@ async function renderGuardrails(m){
   m.appendChild(g);
   m.appendChild(el('<div class="cat-head"><h2>Per-agent policy</h2><div class="ln"></div></div>'));
   if(!agents.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No agents yet</div></div></div>'));return;}
-  const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Agent</th><th>Injection</th><th>PII</th><th>Output review</th><th>HITL</th><th>Max steps</th></tr></thead><tbody></tbody></table></div>');
-  agents.forEach(s=>{const g=s.guardrails||{};card.querySelector('tbody').appendChild(el(`<tr>
-    <td><div class="t-name"><span class="li-ic" style="background:${colorFor(s.name)};width:26px;height:26px;font-size:11px">${initials(s.name)}</span>${esc(s.name)}</div></td>
-    <td>${g.injection_check?'<span class="pill ok">on</span>':'<span class="muted">off</span>'}</td>
-    <td>${g.input_pii_check?'<span class="pill ok">on</span>':'<span class="muted">off</span>'}</td>
-    <td>${g.output_review_required?'<span class="pill warn">required</span>':'<span class="muted">no</span>'}</td>
-    <td>${s.requires_human_review?'<span class="pill warn">yes</span>':'<span class="muted">no</span>'}</td>
-    <td>${g.max_steps||12}</td></tr>`));});
+  m.appendChild(el(`<div class="sub" style="margin:-4px 0 10px">Toggle a control to change that agent's policy — it saves immediately through the governed API (<code>PUT /api/agents</code>).</div>`));
+  const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Agent</th><th>Injection scan</th><th>PII redaction</th><th>Output review</th><th>Human review</th><th>Max steps</th><th></th></tr></thead><tbody></tbody></table></div>');
+  const tb=card.querySelector('tbody');
+  agents.forEach(s=>{const g=s.guardrails||{};
+    const tr=el(`<tr>
+      <td><div class="t-name"><span class="li-ic" style="background:${colorFor(s.name)};width:26px;height:26px;font-size:11px">${initials(s.name)}</span>${esc(s.name)}</div></td>
+      <td><input type="checkbox" data-k="injection_check" ${g.injection_check?'checked':''}></td>
+      <td><input type="checkbox" data-k="input_pii_check" ${g.input_pii_check?'checked':''}></td>
+      <td><input type="checkbox" data-k="output_review_required" ${g.output_review_required?'checked':''}></td>
+      <td><input type="checkbox" data-k="requires_human_review" ${s.requires_human_review?'checked':''}></td>
+      <td><input type="number" min="1" max="50" value="${g.max_steps||12}" data-k="max_steps" style="width:62px"></td>
+      <td><span class="gsave muted small"></span></td></tr>`);
+    const save=async()=>{const st=tr.querySelector('.gsave');st.textContent='saving…';st.style.color='';
+      const body={requires_human_review:tr.querySelector('[data-k=requires_human_review]').checked,
+        guardrails:{injection_check:tr.querySelector('[data-k=injection_check]').checked,
+          input_pii_check:tr.querySelector('[data-k=input_pii_check]').checked,
+          output_review_required:tr.querySelector('[data-k=output_review_required]').checked,
+          max_steps:+tr.querySelector('[data-k=max_steps]').value||12}};
+      try{await api('/agents/'+encodeURIComponent(s.name),{method:'PUT',body:JSON.stringify(body)});
+        st.textContent='saved ✓';st.style.color='var(--ok,#0a8f5b)';setTimeout(()=>{st.textContent='';},1500);
+      }catch(e){st.textContent='failed';st.style.color='var(--bad)';}};
+    tr.querySelectorAll('input').forEach(i=>i.addEventListener('change',save));
+    tb.appendChild(tr);});
   m.appendChild(card);
 }
 
@@ -925,7 +1080,7 @@ function traceDetail(m,tr){
 /* ============================ RUN RECORD (shared) ============================ */
 function statusBadge(st){
   const m={success:['ok','Success'],approved:['ok','Approved'],failed:['bad','Failed'],
-    blocked:['bad','Blocked'],rejected:['bad','Rejected'],needs_review:['warn','Needs review']};
+    blocked:['bad','Blocked'],rejected:['bad','Rejected'],needs_review:['warn','Needs review'],needs_model:['warn','Connect a model']};
   const [cls,lab]=m[st]||['flat',st]; return `<span class="pill ${cls}">${esc(lab)}</span>`;
 }
 function riskChip(level,score){const cls={low:'ok',medium:'warn',high:'bad'}[level]||'flat';
@@ -943,12 +1098,17 @@ function runRecordHtml(rec,opts={}){
   let h=`<div class="card pad">
     <div class="row" style="justify-content:space-between">
       <div class="t-name"><span class="li-ic" style="background:${colorFor(rec.agent)};width:28px;height:28px">${initials(rec.agent)}</span>${esc(rec.agent)}</div>
-      <div class="row">${statusBadge(rec.status)} ${riskChip(rec.risk_level,rec.risk_score)} <span class="pill ${rec.mode==='llm'?'t2':'flat'}">${rec.mode==='llm'?'LLM runtime':'demo engine'}</span></div></div>
+      <div class="row">${statusBadge(rec.status)} ${riskChip(rec.risk_level,rec.risk_score)} <span class="pill ${rec.mode==='llm'?'t2':'flat'}">${rec.mode==='llm'?'LLM runtime':'Rules engine'}</span></div></div>
     <div class="kv" style="margin-top:10px;grid-template-columns:110px 1fr">
       <b>Input</b><span><pre style="max-height:120px">${esc(JSON.stringify(rec.input,null,2))}</pre></span>
       <b>Duration</b><span class="small">${rec.duration_ms} ms · ${(rec.steps||[]).length} steps</span>
       ${(rec.risk_flags||[]).length?`<b>Risk flags</b><span>${rec.risk_flags.map(f=>`<span class="tool-chip">${esc(f)}</span>`).join('')}</span>`:''}
       <b>Trace</b><span><a class="link small" data-trace="${esc(rec.trace_id)}" style="cursor:pointer;color:var(--acc-ink)">${esc(rec.trace_id)} →</a></span></div>`;
+  const _degraded=(rec.risk_flags||[]).filter(f=>String(f).startsWith('source_degraded:')).map(f=>String(f).split(':')[1]);
+  if(_degraded.length)
+    h+=`<div class="note bad" style="margin-top:10px"><b>⚠ Degraded data source(s):</b> ${_degraded.map(esc).join(', ')} were unreachable — this result is <b>degraded, not a clean negative</b>. Re-run or verify before relying on it.</div>`;
+  if(rec.mode&&rec.mode!=='llm')
+    h+=`<div class="note info" style="margin-top:10px"><b>Deterministic rules mode:</b> ran this agent's real tools on live data and composed the decision from their outputs — no model reasoning, nothing simulated. Connect a model (<code>GROQ_API_KEY</code>) for adaptive multi-step reasoning.</div>`;
   if(rec.status==='needs_review'&&rec.pending_action)
     h+=`<div class="note warn" style="margin-top:10px"><b>⏸ Awaiting human approval</b> — side-effecting tool <b>${esc(rec.pending_action.tool)}</b> is held before firing.</div>`;
   h+=`<div style="margin-top:12px"><b class="small">Execution trace</b>${(rec.steps||[]).map(stepHtml).join('')||'<div class="muted small">no steps</div>'}</div>`;
@@ -968,30 +1128,189 @@ function wireRunRecord(root){
 }
 
 /* ============================ PLAYGROUND ============================ */
+function _pgStyle(){
+  if(document.getElementById('pgStyle'))return;
+  const st=document.createElement('style');st.id='pgStyle';
+  st.textContent=`
+  .pg-tabs{display:flex;gap:6px;margin:4px 0 12px;flex-wrap:wrap}
+  .pg-tab{padding:7px 13px;border:1px solid var(--line,#e2e8f2);border-radius:9px;background:#fff;cursor:pointer;font:inherit;color:#475569}
+  .pg-tab.on{background:var(--navy,#0b2545);color:#fff;border-color:var(--navy,#0b2545)}
+  .pg-wrap{display:grid;grid-template-columns:1fr 270px;gap:14px}
+  @media(max-width:900px){.pg-wrap{grid-template-columns:1fr}}
+  .pg-msgs{display:flex;flex-direction:column;gap:12px;min-height:220px;max-height:54vh;overflow:auto;padding:4px}
+  .pg-msg{display:flex;gap:9px}
+  .pg-av{width:28px;height:28px;border-radius:7px;flex:none;display:grid;place-items:center;font-weight:700;font-size:12px;color:#fff}
+  .pg-msg.user .pg-av{background:#334155}.pg-msg.bot .pg-av{background:#1f6feb}
+  .pg-col{flex:1;min-width:0}
+  .pg-bub{background:#fff;border:1px solid #e2e8f2;border-radius:11px;padding:10px 12px;white-space:pre-wrap;word-break:break-word}
+  .pg-msg.user .pg-bub{background:#eef4ff;border-color:#cfe0ff}
+  .pg-tool{font-size:12.5px;border:1px solid #0a7d54;background:#e6f6ee;color:#0a7d54;border-radius:8px;padding:5px 8px;margin:4px 0}
+  .pg-tool b{font-family:ui-monospace,monospace}
+  .pg-tool details{margin-top:4px}.pg-tool summary{cursor:pointer}
+  .pg-tool pre{background:#0c241a;color:#bdf3d8;padding:7px;border-radius:6px;overflow:auto;max-height:180px;font-size:11.5px;margin:5px 0 0}
+  .pg-status{font-size:12.5px;border-radius:8px;padding:5px 8px;background:#fdf3e0;color:#9a6610;border:1px solid #e9cf9c;margin:4px 0}
+  .pg-err{font-size:12.5px;border-radius:8px;padding:5px 8px;background:#fdeceb;color:#b42318;border:1px solid #f1b9b3;margin:4px 0}
+  .pg-side{border:1px solid #e2e8f2;border-radius:11px;padding:12px;background:#fafcff;align-self:start}
+  .pg-side h4{margin:0 0 8px;font-size:13px;color:#0b2545}
+  .pg-mem{font-size:12px;border-left:3px solid #7c5cff;padding:6px 8px;margin:6px 0;background:#fff;border-radius:0 7px 7px 0}
+  .pg-input{display:flex;gap:8px;margin-top:10px}
+  .pg-input textarea{flex:1;border:1px solid #e2e8f2;border-radius:10px;padding:9px;font:inherit;resize:none;max-height:120px}
+  .pg-input button{background:var(--navy,#0b2545);color:#fff;border:none;border-radius:10px;width:46px;font-size:17px;cursor:pointer}
+  .pg-input button:disabled{opacity:.45;cursor:default}
+  .pg-meta{font-size:11.5px;color:#5b6b82;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .pg-pill{font-size:11px;padding:2px 7px;border-radius:999px;background:#eef2f9;border:1px solid #e2e8f2}
+  .pg-pill.llm{background:#e7f0ff;color:#1746a2;border-color:#cfe0ff}.pg-pill.demo{background:#f0eef9;color:#5b3fa2}
+  .pg-pill.high{background:#fdeceb;color:#b42318}.pg-pill.medium{background:#fdf3e0;color:#9a6610}.pg-pill.low{background:#e6f6ee;color:#0a7d54}
+  .pg-flow{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .pg-node{display:flex;align-items:center;gap:10px;border:1px solid #e2e8f2;border-radius:10px;padding:8px 11px;background:#fff}
+  .pg-node .n{width:22px;height:22px;border-radius:50%;background:#0b2545;color:#fff;display:grid;place-items:center;font-size:11px;flex:none}
+  .pg-node .arrow{color:#94a3b8;text-align:center;font-size:13px}
+  `;document.head.appendChild(st);
+}
+function _pgHeaders(){const h={'Content-Type':'application/json','X-Tenant':tenant()};const t=authToken();if(t)h['Authorization']='Bearer '+t;return h;}
+
 async function renderPlayground(m){
+  _pgStyle();
   const agents=await api('/agents');
   m.innerHTML='';
   m.appendChild(el(`<div class="page-head"><div><h1>Playground</h1>
-    <div class="sub">Run a deployed agent on a real task and watch every governed step — tool calls are actually executed.</div></div></div>`));
+    <div class="sub">Talk to an agent in plain English — it plans, calls real tools, and streams a conversational answer. Or run a multi-agent workflow.</div></div></div>`));
+  if(STATE.modelConfigured===false){m.appendChild(el(`<div class="note info" style="margin-bottom:14px"><b>Running in deterministic rules mode.</b> No language model is connected, so agents execute their <b>real tools on live data</b> and compose a decision from the results — nothing is simulated. Connect a model (set <code>GROQ_API_KEY</code> or <code>FINGENT_LLM_API_KEY</code>) for adaptive, multi-step LLM reasoning.</div>`));}
   if(!agents.length){m.appendChild(el('<div class="card"><div class="empty"><div class="big">No agents yet</div><div class="small">Create one from the catalog or with Fin on the Home page.</div></div></div>'));return;}
   const sel=STATE.pgAgent&&agents.some(a=>a.name===STATE.pgAgent)?STATE.pgAgent:agents[0].name;
+  STATE.pgAgent=sel; STATE.pgTab=STATE.pgTab||'chat'; STATE.pgSession=STATE.pgSession||('s'+Math.random().toString(36).slice(2,7));
+
   const card=el(`<div class="card pad">
-    <label class="fld">Agent</label>
-    <select id="pgAgent">${agents.map(a=>`<option value="${esc(a.name)}" ${a.name===sel?'selected':''}>${esc(a.name)} · tier ${a.tier}${a.requires_human_review?' · HITL':''}</option>`).join('')}</select>
+    <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+      <label class="fld" style="margin:0">Agent</label>
+      <select id="pgAgent">${agents.map(a=>`<option value="${esc(a.name)}" ${a.name===sel?'selected':''}>${esc(a.name)} · tier ${a.tier}${a.requires_human_review?' · HITL':''}</option>`).join('')}</select>
+      <span style="flex:1"></span>
+      <button class="pg-tab ${STATE.pgTab==='chat'?'on':''}" data-tab="chat">💬 Chat</button>
+      <button class="pg-tab ${STATE.pgTab==='workflow'?'on':''}" data-tab="workflow">🔀 Workflow (supervised)</button>
+      <button class="pg-tab ${STATE.pgTab==='raw'?'on':''}" data-tab="raw">⌨ Advanced (raw JSON)</button>
+    </div>
+    <div id="pgPanel" style="margin-top:14px"></div></div>`);
+  m.appendChild(card);
+  card.querySelector('#pgAgent').onchange=e=>{STATE.pgAgent=e.target.value;};
+  card.querySelectorAll('.pg-tab').forEach(b=>b.onclick=()=>{STATE.pgTab=b.dataset.tab;renderPlayground(m);});
+  const panel=card.querySelector('#pgPanel');
+  if(STATE.pgTab==='chat')_pgChat(panel);
+  else if(STATE.pgTab==='workflow')_pgWorkflow(panel);
+  else _pgRaw(panel);
+}
+
+function _pgChat(panel){
+  const agent=STATE.pgAgent;
+  panel.innerHTML='';
+  const wrap=el(`<div class="pg-wrap">
+    <div>
+      <div class="pg-msgs" id="pgMsgs"><div class="muted small" style="padding:18px;text-align:center">Type a task below — e.g. <i>“Screen Oleg Petrov against sanctions and PEP lists.”</i></div></div>
+      <div class="pg-input"><textarea id="pgChatIn" rows="1" placeholder="Message ${esc(agent)}…"></textarea><button id="pgSend" title="Send">➤</button></div>
+    </div>
+    <div class="pg-side">
+      <h4>🧠 Recalled memory</h4>
+      <div id="pgMem"><div class="muted small">Long-term memories the agent recalls from earlier sessions appear here.</div></div>
+      <div style="margin-top:12px;font-size:11.5px;color:#5b6b82">Session <code>${esc(STATE.pgSession)}</code> · <a id="pgNew" style="cursor:pointer;color:var(--acc-ink,#1746a2)">new chat</a></div>
+    </div></div>`);
+  panel.appendChild(wrap);
+  const msgs=wrap.querySelector('#pgMsgs'), input=wrap.querySelector('#pgChatIn'), send=wrap.querySelector('#pgSend'), memBox=wrap.querySelector('#pgMem');
+  wrap.querySelector('#pgNew').onclick=()=>{STATE.pgSession='s'+Math.random().toString(36).slice(2,7);_pgChat(panel);};
+  const auto=()=>{input.style.height='auto';input.style.height=Math.min(120,input.scrollHeight)+'px';};
+  input.addEventListener('input',auto);
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();go();}});
+  send.onclick=go;
+  let busy=false;
+  function clearEmpty(){const e=msgs.querySelector('.muted');if(e&&e.parentNode===msgs)e.remove();}
+  async function go(){
+    if(busy)return;const text=input.value.trim();if(!text)return;
+    busy=true;send.disabled=true;input.value='';auto();clearEmpty();
+    msgs.appendChild(el(`<div class="pg-msg user"><div class="pg-av">You</div><div class="pg-col"><div class="pg-bub">${esc(text)}</div></div></div>`));
+    const bot=el(`<div class="pg-msg bot"><div class="pg-av">AI</div><div class="pg-col"><div class="trace"></div><div class="pg-bub"></div><div class="pg-meta"></div></div></div>`);
+    msgs.appendChild(bot);msgs.scrollTop=msgs.scrollHeight;
+    const trace=bot.querySelector('.trace'),bub=bot.querySelector('.pg-bub'),meta=bot.querySelector('.pg-meta');
+    try{
+      const resp=await fetch('/api/agents/'+encodeURIComponent(agent)+'/chat',{method:'POST',headers:_pgHeaders(),
+        body:JSON.stringify({message:text,session_id:STATE.pgSession})});
+      if(!resp.ok||!resp.body){throw new Error('HTTP '+resp.status+' '+(await resp.text()).slice(0,160));}
+      const rd=resp.body.getReader();const dec=new TextDecoder();let buf='';
+      while(true){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});
+        let i;while((i=buf.indexOf('\n\n'))>=0){const line=buf.slice(0,i).split('\n').find(l=>l.startsWith('data:'));buf=buf.slice(i+2);
+          if(!line)continue;let ev;try{ev=JSON.parse(line.slice(5).trim());}catch(_){continue;}
+          _pgEvent(ev,{trace,bub,meta,memBox});msgs.scrollTop=msgs.scrollHeight;}}
+    }catch(e){trace.appendChild(el(`<div class="pg-err">✗ ${esc(e.message||e)}</div>`));}
+    busy=false;send.disabled=false;input.focus();
+  }
+}
+
+function _pgEvent(ev,ui){
+  if(ev.type==='start'){
+    ui.trace.appendChild(el(`<div class="pg-status" style="background:#eef2f9;color:#475569;border-color:#e2e8f2"><b>${esc(ev.agent)}</b> · mode ${esc(ev.mode)} · tools: ${esc((ev.allowed_tools||[]).join(', ')||'none')}</div>`));
+  }else if(ev.type==='memory'){
+    ui.memBox.innerHTML=(ev.recalled||[]).map(r=>`<div class="pg-mem">${esc(r.text)}<div class="muted" style="font-size:10.5px;margin-top:3px">score ${r.score}</div></div>`).join('')||'<div class="muted small">No relevant memory.</div>';
+  }else if(ev.type==='token'){ui.bub.textContent+=ev.text;}
+  else if(ev.type==='tool_call'){ui.trace.appendChild(el(`<div class="pg-tool">🔧 <b>${esc(ev.tool)}</b> <span style="opacity:.8">${esc(JSON.stringify(ev.args||{}))}</span></div>`));}
+  else if(ev.type==='tool_result'){const tl=ui.trace.querySelectorAll('.pg-tool');const last=tl[tl.length-1]||ui.trace;
+    last.appendChild(el(`<details><summary>✓ result</summary><pre>${esc(JSON.stringify(ev.output,null,2))}</pre></details>`));}
+  else if(ev.type==='status'){ui.trace.appendChild(el(`<div class="pg-status">⚠ ${esc(ev.text)}</div>`));}
+  else if(ev.type==='error'){ui.trace.appendChild(el(`<div class="pg-err">✗ ${esc(ev.text)}</div>`));}
+  else if(ev.type==='final'){
+    if(!ui.bub.textContent.trim())ui.bub.textContent=ev.text||'(no answer)';
+    const r=ev.risk_level||'low';
+    ui.meta.innerHTML=`<span class="pg-pill ${esc(ev.mode)}">${esc(ev.mode)}</span><span class="pg-pill ${esc(r)}">risk ${esc(r)}</span><span class="pg-pill">${esc(ev.status)}</span><span class="pg-pill">run ${esc(ev.run_id)}</span>`;
+    if(ev.structured!=null){ui.meta.appendChild(el(`<details style="width:100%"><summary class="muted small" style="cursor:pointer">structured payload</summary><pre style="background:#0d1b2a;color:#d6e2f2;padding:9px;border-radius:7px;overflow:auto;max-height:240px;font-size:11.5px">${esc(JSON.stringify(ev.structured,null,2))}</pre></details>`));}
+  }
+}
+
+function _pgWorkflow(panel){
+  panel.innerHTML='';
+  const card=el(`<div>
+    <div class="note info">A supervised run dispatches every tier agent in dependency order — each is a real agent (LLM tool-use) collaborating on a shared blackboard — then the Synthesis agent writes the final answer.</div>
+    <div class="row" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <label class="fld" style="margin:0">Tier</label>
+      <select id="wfTier"><option value="1">Tier 1</option><option value="2">Tier 2</option><option value="3">Tier 3</option></select>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="wfRun">${I.play} Run workflow</button>
+    </div>
+    <label class="fld">Task input (JSON)</label>
+    <textarea id="wfInput" rows="3">{ "company": "Stripe" }</textarea>
+    <div id="wfOut" style="margin-top:14px"></div></div>`);
+  panel.appendChild(card);
+  card.querySelector('#wfRun').onclick=async()=>{
+    const out=card.querySelector('#wfOut');out.innerHTML='<div class="note info">Dispatching the supervisor…</div>';
+    let inputs={};try{inputs=JSON.parse(card.querySelector('#wfInput').value||'{}');}catch(_){out.innerHTML='<div class="note bad">Input must be valid JSON.</div>';return;}
+    try{const res=await api('/run',{method:'POST',body:JSON.stringify({supervised:true,tier:+card.querySelector('#wfTier').value,inputs})});
+      out.innerHTML=_wfHtml(res);
+    }catch(e){out.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+  };
+}
+function _wfHtml(res){
+  if(res&&res.ok===false)return `<div class="note bad">${esc(res.message||'no agents matched')}</div>`;
+  const ags=res.agents||[];
+  const flow=ags.map((a,i)=>`${i?'<div class="arrow">↓</div>':''}<div class="pg-node"><div class="n">${i+1}</div>
+    <div style="flex:1"><b>${esc(a.agent)}</b> <span class="muted small">· ${a.steps} step${a.steps===1?'':'s'}</span></div>
+    <span class="pg-pill ${esc(a.mode)}">${esc(a.mode)}</span><span class="pg-pill ${a.status==='success'?'low':(a.status==='blocked'?'high':'medium')}">${esc(a.status)}</span></div>`).join('');
+  const fp=res.final_prose;
+  const prose=(typeof fp==='string')?esc(fp):`<pre style="background:#0d1b2a;color:#d6e2f2;padding:11px;border-radius:8px;overflow:auto;max-height:300px;font-size:12px">${esc(JSON.stringify(fp,null,2))}</pre>`;
+  return `<div class="pg-flow">${flow||'<div class="muted small">No agents executed.</div>'}</div>
+    <div class="card pad" style="margin-top:14px;background:#fafcff"><h3 style="margin-top:0">🧩 Synthesis · ${esc(res.final_agent||'—')}</h3><div class="pg-bub">${prose}</div></div>`;
+}
+
+function _pgRaw(panel){
+  panel.innerHTML='';
+  const card=el(`<div>
+    <div class="note">Raw single-shot invocation — posts JSON to <code>/api/agents/{name}/invoke</code> and renders the full RunRecord. The Chat tab is the recommended surface.</div>
     <label class="fld">Task input (JSON)</label>
     <textarea id="pgInput" rows="5">{ "company": "Stripe", "name": "Jane Doe" }</textarea>
     <label class="fld" style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="pgSide" style="width:auto"> Pre-approve side-effecting tools for this run</label>
     <button class="btn primary" id="pgRun" style="margin-top:14px">${I.play} Run agent</button>
     <div id="pgOut" style="margin-top:16px"></div></div>`);
-  m.appendChild(card);
-  card.querySelector('#pgAgent').onchange=e=>{STATE.pgAgent=e.target.value;};
+  panel.appendChild(card);
   card.querySelector('#pgRun').onclick=async()=>{
-    const out=card.querySelector('#pgOut'); out.innerHTML='<div class="note info">Running the governed runtime…</div>';
-    let inputs={};
-    try{inputs=JSON.parse(card.querySelector('#pgInput').value||'{}');}catch(_){out.innerHTML='<div class="note bad">Input must be valid JSON.</div>';return;}
-    try{const rec=await api('/agents/'+encodeURIComponent(card.querySelector('#pgAgent').value)+'/invoke',
+    const out=card.querySelector('#pgOut');out.innerHTML='<div class="note info">Running the governed runtime…</div>';
+    let inputs={};try{inputs=JSON.parse(card.querySelector('#pgInput').value||'{}');}catch(_){out.innerHTML='<div class="note bad">Input must be valid JSON.</div>';return;}
+    try{const rec=await api('/agents/'+encodeURIComponent(STATE.pgAgent)+'/invoke',
         {method:'POST',body:JSON.stringify({inputs,approve_side_effecting:card.querySelector('#pgSide').checked})});
-      out.innerHTML=runRecordHtml(rec,{review:true}); wireRunRecord(out);
+      out.innerHTML=runRecordHtml(rec,{review:true});wireRunRecord(out);
     }catch(e){out.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
   };
 }
@@ -1008,7 +1327,7 @@ async function renderRuns(m){
   const card=el('<div class="card" style="overflow:hidden"><table><thead><tr><th>Run</th><th>Agent</th><th>Status</th><th>Risk</th><th>Mode</th><th>Steps</th><th>When</th></tr></thead><tbody></tbody></table></div>');
   runs.forEach(r=>{const tr=el(`<tr class="clk"><td><span style="font-family:ui-monospace,monospace">${esc(r.id)}</span></td>
     <td>${esc(r.agent)}</td><td>${statusBadge(r.status)}</td><td>${riskChip(r.risk_level,r.risk_score)}</td>
-    <td><span class="pill ${r.mode==='llm'?'t2':'flat'}">${r.mode==='llm'?'LLM':'demo'}</span></td>
+    <td><span class="pill ${r.mode==='llm'?'t2':'flat'}">${r.mode==='llm'?'LLM':'Rules'}</span></td>
     <td>${(r.steps||[]).length}</td><td class="muted small">${new Date((r.ts||0)*1000).toLocaleString()}</td></tr>`);
     tr.onclick=()=>{STATE.openRun=r.id;render();};card.querySelector('tbody').appendChild(tr);});
   m.appendChild(card);
@@ -1117,15 +1436,30 @@ document.getElementById('avatar').onclick=async()=>{
   if(!authToken())return;
   if(confirm('Sign out of Fingent?')){try{await api('/logout',{method:'POST'});}catch(_){}try{sessionStorage.removeItem('fin_token');}catch(_){}showLogin();}
 };
+function applyTenantMode(realTenant){
+  // The X-Tenant header only switches tenant when the server explicitly allows it. In the safe
+  // default the tenant is fixed by the session/default — so show it as a locked label instead of
+  // a free switcher that silently does nothing.
+  const box=document.querySelector('.tenant'); const sel=document.getElementById('tenant');
+  if(realTenant) setTenant(realTenant);
+  if(STATE.allowHeaderTenant){ sel.disabled=false; return; }
+  sel.innerHTML=`<option>${esc(realTenant||'acme')}</option>`; sel.value=realTenant||'acme';
+  sel.disabled=true; sel.style.cursor='default'; sel.title='Tenant is fixed by your session';
+  const lab=box&&box.querySelector('label'); if(lab) lab.textContent='Tenant';
+}
 async function boot(){
   document.getElementById('avatar').textContent=tenant()[0].toUpperCase();
   let cfg={auth_required:false};
   try{cfg=await api('/config');}catch(_){}
+  STATE.modelConfigured=(cfg.model_configured!==false); STATE.modelName=cfg.model_name||null;
+  STATE.allowHeaderTenant=!!cfg.allow_header_tenant;
+  let realTenant=cfg.default_tenant||'acme';
   if(cfg.auth_required){
     if(!authToken()) return showLogin();
-    try{const me=await api('/me');setTenant(me.tenant);}
+    try{const me=await api('/me');realTenant=me.tenant;}
     catch(_){try{sessionStorage.removeItem('fin_token');}catch(__){}return showLogin();}
   }
+  applyTenantMode(realTenant);
   render();
 }
 

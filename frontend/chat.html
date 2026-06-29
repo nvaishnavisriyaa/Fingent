@@ -1,0 +1,153 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fingent · Chat with an agent</title>
+<style>
+:root{--bg:#f4f6fb;--ink:#0d1b2a;--mut:#5b6b82;--surface:#fff;--line:#e2e8f2;
+ --acc:#1f6feb;--acc-soft:#e7f0ff;--navy:#0b2545;--tool:#0a7d54;--tool-soft:#e6f6ee;
+ --warn:#9a6610;--warn-soft:#fdf3e0;--err:#b42318;--err-soft:#fdeceb;}
+*{box-sizing:border-box}body{margin:0;font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--ink)}
+.top{display:flex;gap:10px;align-items:center;padding:12px 18px;background:var(--navy);color:#fff}
+.top .logo{width:30px;height:30px;border-radius:8px;background:#fff;color:var(--navy);font-weight:800;display:grid;place-items:center}
+.top b{font-size:16px}.top .sp{flex:1}
+.top a{color:#cfe0ff;text-decoration:none;font-size:13px}
+.bar{display:flex;gap:10px;align-items:center;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bar label{font-size:12px;color:var(--mut);margin-right:4px}
+select,input,button{font:inherit}
+select,input{padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink)}
+.bar .new{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;cursor:pointer}
+.wrap{max-width:880px;margin:0 auto;padding:18px}
+.msgs{display:flex;flex-direction:column;gap:14px;padding-bottom:120px}
+.msg{display:flex;gap:10px}
+.msg .av{width:30px;height:30px;border-radius:8px;flex:none;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff}
+.msg.user .av{background:#334155}.msg.bot .av{background:var(--acc)}
+.bub{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 13px;max-width:100%;white-space:pre-wrap;word-wrap:break-word}
+.msg.user .bub{background:var(--acc-soft);border-color:#cfe0ff}
+.trace{display:flex;flex-direction:column;gap:6px;margin:2px 0 6px}
+.tool{font-size:13px;border:1px solid var(--tool);background:var(--tool-soft);color:var(--tool);border-radius:9px;padding:6px 9px}
+.tool b{font-family:ui-monospace,Menlo,monospace}
+.tool .args{color:#33543f;opacity:.85}
+.tool details{margin-top:4px}.tool summary{cursor:pointer;color:#0a5c3e}
+.tool pre{margin:6px 0 0;background:#0c241a;color:#bdf3d8;padding:8px;border-radius:7px;overflow:auto;max-height:220px;font-size:12px}
+.status{font-size:13px;border-radius:9px;padding:6px 9px;background:var(--warn-soft);color:var(--warn);border:1px solid #e9cf9c}
+.err{font-size:13px;border-radius:9px;padding:6px 9px;background:var(--err-soft);color:var(--err);border:1px solid #f1b9b3}
+.meta{font-size:12px;color:var(--mut);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.pill{font-size:11px;padding:2px 7px;border-radius:999px;background:#eef2f9;color:var(--mut);border:1px solid var(--line)}
+.pill.llm{background:#e7f0ff;color:#1746a2;border-color:#cfe0ff}.pill.demo{background:#f0eef9;color:#5b3fa2;border-color:#dcd5f3}
+.pill.high{background:var(--err-soft);color:var(--err)}.pill.medium{background:var(--warn-soft);color:var(--warn)}.pill.low{background:var(--tool-soft);color:var(--tool)}
+.struct{margin-top:6px}.struct summary{cursor:pointer;font-size:12px;color:var(--mut)}
+.struct pre{background:#0d1b2a;color:#d6e2f2;padding:10px;border-radius:8px;overflow:auto;max-height:280px;font-size:12px}
+.composer{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(transparent,var(--bg) 26%);padding:14px}
+.composer .box{max-width:880px;margin:0 auto;display:flex;gap:8px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 6px 22px rgba(13,27,42,.08)}
+.composer textarea{flex:1;border:none;outline:none;resize:none;font:inherit;padding:6px;max-height:140px}
+.composer button{background:var(--navy);color:#fff;border:none;border-radius:10px;width:44px;cursor:pointer;font-size:18px}
+.composer button:disabled{opacity:.45;cursor:default}
+.hint{max-width:880px;margin:6px auto 0;font-size:12px;color:var(--mut)}
+.empty{color:var(--mut);text-align:center;padding:40px 0}
+.cursor::after{content:'▌';color:var(--acc);animation:b 1s steps(1) infinite}@keyframes b{50%{opacity:0}}
+</style></head><body>
+<div class="top"><div class="logo">F</div><b>Fingent</b><span style="opacity:.8;font-size:13px">· chat with an agent</span><span class="sp"></span><a href="/">← back to platform</a></div>
+<div class="bar">
+  <span><label>Tenant</label><input id="tenant" value="acme" size="8"></span>
+  <span><label>Agent</label><select id="agent"></select></span>
+  <span><label>Session</label><input id="session" value="default" size="10"></span>
+  <button class="new" id="newchat">＋ New chat</button>
+</div>
+<div class="wrap"><div class="msgs" id="msgs"><div class="empty">Pick an agent and type a task in plain English — it will plan, call real tools, and stream back a conversational answer with the full tool-call trace.</div></div></div>
+<div class="composer"><div class="box">
+  <textarea id="inp" rows="1" placeholder="e.g. Screen Oleg Petrov against sanctions and PEP lists"></textarea>
+  <button id="send" title="Send">➤</button>
+</div><div class="hint" id="hint"></div></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const token=()=>{try{return sessionStorage.getItem('fin_token')||''}catch(_){return''}};
+const tenant=()=>$('#tenant').value.trim()||'acme';
+function headers(){const h={'Content-Type':'application/json','X-Tenant':tenant()};const t=token();if(t)h['Authorization']='Bearer '+t;return h;}
+const msgs=$('#msgs');
+function clearEmpty(){const e=msgs.querySelector('.empty');if(e)e.remove();}
+
+async function loadAgents(){
+  try{
+    const r=await fetch('/api/agents',{headers:headers()});const d=await r.json();
+    const list=Array.isArray(d)?d:(d.agents||d.items||[]);
+    const sel=$('#agent');sel.innerHTML='';
+    if(!list.length){sel.innerHTML='<option value="">(no agents — create one on the platform)</option>';return;}
+    list.forEach(a=>{const n=a.name||a.spec&&a.spec.name||a;const o=document.createElement('option');o.value=n;o.textContent=n+(a.template?(' · '+a.template):'');sel.appendChild(o);});
+  }catch(e){$('#hint').textContent='Could not load agents: '+e.message;}
+}
+
+function addUser(text){clearEmpty();const m=document.createElement('div');m.className='msg user';
+  m.innerHTML='<div class="av">You</div><div class="bub">'+esc(text)+'</div>';msgs.appendChild(m);scroll();}
+
+function addBot(){clearEmpty();const m=document.createElement('div');m.className='msg bot';
+  m.innerHTML='<div class="av">AI</div><div style="flex:1;min-width:0"><div class="trace"></div><div class="bub cursor"></div><div class="meta"></div></div>';
+  msgs.appendChild(m);scroll();return{trace:m.querySelector('.trace'),bub:m.querySelector('.bub'),meta:m.querySelector('.meta')};}
+
+function scroll(){window.scrollTo(0,document.body.scrollHeight);}
+
+function onEvent(ui,ev){
+  if(ev.type==='start'){
+    const t=document.createElement('div');t.className='status';
+    t.style.background='#eef2f9';t.style.color='#475569';t.style.borderColor='#e2e8f2';
+    t.innerHTML='<b>'+esc(ev.agent)+'</b> thinking · tools available: '+esc((ev.allowed_tools||[]).join(', ')||'none')+' · mode '+esc(ev.mode);
+    ui.trace.appendChild(t);
+  }else if(ev.type==='token'){ui.bub.classList.add('cursor');ui.bub.textContent+=ev.text;}
+  else if(ev.type==='tool_call'){
+    const d=document.createElement('div');d.className='tool';
+    d.innerHTML='🔧 calling <b>'+esc(ev.tool)+'</b> <span class="args">'+esc(JSON.stringify(ev.args||{}))+'</span>';
+    ui.trace.appendChild(d);
+  }else if(ev.type==='tool_result'){
+    const tools=ui.trace.querySelectorAll('.tool');const last=tools[tools.length-1];
+    const det=document.createElement('details');
+    det.innerHTML='<summary>✓ result</summary><pre>'+esc(JSON.stringify(ev.output,null,2))+'</pre>';
+    (last||ui.trace).appendChild(det);
+  }else if(ev.type==='status'){
+    const d=document.createElement('div');d.className='status';d.textContent='⚠ '+ev.text;ui.trace.appendChild(d);
+  }else if(ev.type==='error'){
+    const d=document.createElement('div');d.className='err';d.textContent='✗ '+ev.text;ui.trace.appendChild(d);
+  }else if(ev.type==='final'){
+    ui.bub.classList.remove('cursor');
+    if(!ui.bub.textContent.trim())ui.bub.textContent=ev.text||'(no answer)';
+    const r=ev.risk_level||'low';
+    ui.meta.innerHTML='<span class="pill '+esc(ev.mode)+'">'+esc(ev.mode)+'</span>'
+      +'<span class="pill '+esc(r)+'">risk: '+esc(r)+'</span>'
+      +'<span class="pill">status: '+esc(ev.status)+'</span>'
+      +'<span class="pill">run '+esc(ev.run_id)+'</span>';
+    if(ev.structured!=null){const s=document.createElement('details');s.className='struct';
+      s.innerHTML='<summary>structured payload (secondary)</summary><pre>'+esc(JSON.stringify(ev.structured,null,2))+'</pre>';
+      ui.meta.parentNode.appendChild(s);}
+    scroll();
+  }
+  scroll();
+}
+
+let busy=false;
+async function send(){
+  if(busy)return;const text=$('#inp').value.trim();const agent=$('#agent').value;
+  if(!text)return; if(!agent){$('#hint').textContent='Create an agent on the platform first.';return;}
+  busy=true;$('#send').disabled=true;$('#inp').value='';autosize();
+  addUser(text);const ui=addBot();
+  try{
+    const resp=await fetch('/api/agents/'+encodeURIComponent(agent)+'/chat',
+      {method:'POST',headers:headers(),body:JSON.stringify({message:text,session_id:$('#session').value||'default'})});
+    if(!resp.ok||!resp.body){const t=await resp.text();throw new Error('HTTP '+resp.status+' '+t.slice(0,200));}
+    const reader=resp.body.getReader();const dec=new TextDecoder();let buf='';
+    while(true){const {value,done}=await reader.read();if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      let i;while((i=buf.indexOf('\n\n'))>=0){const block=buf.slice(0,i);buf=buf.slice(i+2);
+        const line=block.split('\n').find(l=>l.startsWith('data:'));if(!line)continue;
+        let ev;try{ev=JSON.parse(line.slice(5).trim());}catch(_){continue;}
+        if(ev.type==='done'){continue;}onEvent(ui,ev);}
+    }
+  }catch(e){const d=document.createElement('div');d.className='err';d.textContent='✗ '+e.message;ui.trace.appendChild(d);ui.bub.classList.remove('cursor');}
+  busy=false;$('#send').disabled=false;$('#inp').focus();
+}
+
+function autosize(){const t=$('#inp');t.style.height='auto';t.style.height=Math.min(140,t.scrollHeight)+'px';}
+$('#inp').addEventListener('input',autosize);
+$('#inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+$('#send').onclick=send;
+$('#newchat').onclick=()=>{msgs.innerHTML='<div class="empty">New conversation. Type a task below.</div>';$('#session').value='s'+Math.random().toString(36).slice(2,7);};
+$('#tenant').addEventListener('change',loadAgents);
+loadAgents();
+</script></body></html>

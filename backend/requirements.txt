@@ -1,6 +1,23 @@
-pydantic>=2.5
-fastapi>=0.110
-uvicorn[standard]>=0.27
-requests>=2.31
-pytest>=8.0
-python-dotenv
+# Fingent backend — pinned for reproducible builds (Docker/CI install these exact versions).
+# Bump deliberately; do not float in production.
+pydantic==2.7.1
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+requests==2.32.3
+python-dotenv==1.0.1
+cryptography==48.0.0
+pytest==9.1.0
+
+# Document intelligence (KYC) — PDF text + image OCR.
+# Image OCR needs the tesseract binary; scanned-PDF OCR also needs poppler:
+#   Debian/Ubuntu:  apt-get install tesseract-ocr poppler-utils
+pdf2image==1.17.0
+pdfplumber==0.11.10
+pypdf==6.14.2
+pytesseract==0.3.13
+Pillow==12.2.0
+reportlab==5.0.0   # test-only: generates sample PDFs
+
+# Optional backends (uncomment to enable):
+# psycopg[binary]==3.2.3   # Postgres store via DATABASE_URL=postgres://…
+# pinecone==5.0.1          # vector memory backend via PINECONE_API_KEY

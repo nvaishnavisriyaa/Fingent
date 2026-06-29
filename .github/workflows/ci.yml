@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      # tesseract + poppler so the KYC document-OCR tests run (not skipped).
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      # Offline + deterministic: no external API keys in CI, so tools use their
+      # labelled fallbacks and the suite stays hermetic.
+      - name: Run tests
+        env:
+          FINGENT_LIVE_DATA: "0"
+        run: python -m pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t fingent:ci .

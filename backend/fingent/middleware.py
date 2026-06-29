@@ -22,6 +22,21 @@ _PII_PATTERNS = {
     "credit_card": re.compile(r"\b(?:\d{4}[ -]){3}\d{4}\b|\b\d{16}\b"),
     # phone: require separators / + prefix so bare integers (e.g. revenue 62000000) don't match
     "phone": re.compile(r"\b(?:\+?\d{1,3}[-.\s])?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b"),
+    # IBAN: intrinsically specific (2 letters + 2 check digits + 10-30 alnum) — low false-positive.
+    "iban": re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b"),
+    # Account number: ONLY when label-introduced AND the value contains a digit, so legitimate
+    # words ("account active") and bare financial figures are never redacted.
+    "account": re.compile(
+        r"\b(?:account|acct|a/c)\s*(?:no\.?|number|num|#)?\s*[:#]?\s*"
+        r"((?=[A-Za-z0-9-]*\d)[A-Za-z0-9][A-Za-z0-9-]{5,})\b", re.I),
+    # Date of birth: only when DOB-labelled, so ordinary dates (filing/statement dates) survive.
+    "dob": re.compile(
+        r"\b(?:dob|d\.o\.b\.?|date of birth|born)\b\s*[:#]?\s*"
+        r"(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", re.I),
+    # Passport / national id: label-introduced alnum identifier.
+    "passport": re.compile(
+        r"\b(?:passport|national\s*id|nin|tax\s*id|ein)\s*(?:no\.?|number|#)?\s*[:#]?\s*"
+        r"([A-Z]{0,3}\d[A-Z0-9-]{4,})\b", re.I),
 }
 
 _INJECTION_SIGNATURES = [

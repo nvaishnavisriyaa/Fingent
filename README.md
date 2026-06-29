@@ -51,7 +51,11 @@ form answers + free-text  →  Input Validator  →  LLM Spec Compiler (proposes
 
 - **From a template** — pick from the catalog, fill configurable params (ICP, personas, watchlists, thresholds), compile.
 - **Customize** — the mandatory free-text field is treated as *desired behavior*, never as instructions to the compiler. Ask for an extra tool and it's granted *only* if it's inside the template's grantable universe; anything outside is stripped.
-- **From scratch (Fin)** — describe the agent; Fin compiles it and crystallizes it into a reusable template.
+- **From scratch (Fin)** — *describe the agent in plain English and Fin builds it*: it selects
+  least-privilege tools, writes the purpose + operating instructions, infers the expected
+  inputs, output format, risk level and human-review setting, compiles a full validated spec,
+  and crystallizes it into a reusable template. Uses the configured LLM when available; with
+  no model it falls back to a real intent-based heuristic builder (not just keyword matching).
 
 You can then **view, edit (purpose/instructions/risk/output/HITL), duplicate, and delete** agents.
 
@@ -63,8 +67,13 @@ Running an agent (Playground or `POST /api/agents/{name}/invoke`) starts a **gov
 loop** in `runtime.py`:
 
 1. The agent observes the task input.
-2. It decides the **next action** — a real **Llama** call when `GROQ_API_KEY` is set
-   (`mode: "llm"`), otherwise a transparent **deterministic engine** (`mode: "demo"`).
+2. It decides the **next action** by **default with a real LLM using native tool calling** —
+   the model is given each allowed tool's JSON schema (native *and* MCP) and picks the tool +
+   arguments at each step (`mode: "llm"`). The provider is OpenAI-compatible and configurable
+   (Groq by default; point `FINGENT_LLM_BASE_URL` at any gateway). With no model configured the
+   agent still runs for real in a **deterministic rules engine** (`mode: "rules"`): it executes the
+   agent's real tools on live data and composes the decision strictly from their outputs (nothing
+   simulated). A model upgrades the same agent to adaptive multi-step reasoning.
 3. It invokes the **real tool function** from the registry (every tool in the trace was
    actually executed by code).
 4. It observes the result, repeats, and produces a final output.
@@ -124,8 +133,9 @@ Every blocked or flagged action has a reason.
 - **Side-effect HITL gate** — write/send/pay tools never fire unsupervised; they pause for approval.
 - **Prompt-injection defense** — untrusted tool output (web/MCP/docs) and the free-text field are
   scanned; matches are **quarantined as data**, never acted on.
-- **PII redaction** — SSNs, cards, emails and phones are redacted from tool output before it is
-  recorded or returned.
+- **PII redaction** — SSNs, cards, emails, phones, **IBANs, account numbers, DOB and passport/tax
+  IDs** (the identifiers the KYC tools parse) are redacted from tool output before it is recorded
+  or returned.
 - **Risk scoring** — each run gets a 0–100 score and low/medium/high level from its flags; high
   risk auto-routes to review.
 - **Compliance overseer** — output is checked for sanctions hits, leaked identifiers and red-flag
@@ -151,13 +161,14 @@ OpenTelemetry-style tracing · single-file vanilla SPA frontend (drop-in replace
 | `compiler.py` | LLM spec compiler (proposes) with a deterministic offline fallback. |
 | `validators.py` | Input validator + **spec validator** (disposes) — the security boundary. |
 | `runtime.py` | **Real agent runtime**: governed tool-use loop, risk scoring, run records. |
-| `factory.py` / `planner.py` | Multi-agent GTM workflow (planner orchestrates a DAG). |
+| `planner.py` | Multi-agent supervisor: an LLM **planning node** that decomposes a goal into a runtime task graph (which sub-agents to call + a per-agent subtask), validates it deterministically into a DAG, **adapts** the remaining plan on intermediate results, and dispatches every sub-agent through the ONE governed runtime kernel (`runtime.run_node`). Falls back to a dependency toposort with no model — no separate execution/enforcement path. |
 | `middleware.py` | Guardrails: PII, injection, least-privilege, compliance, budget, HITL. |
 | `registry.py` | Tool registry (NATIVE / WEB_SEARCH / MCP / EXTERNAL_API), tenant-scoped. |
 | `tools_native.py` | Tool implementations (deterministic mocks + live SEC EDGAR + compose_summary). |
 | `blackboard.py` | Shared memory: namespaced, versioned, deduplicated, ACL'd. |
+| `memory.py` | Long-term memory: **semantic recall** over real embeddings (OpenAI-compatible API or local sentence-transformers; a clearly-flagged lexical-hashing fallback offline), **durable** and tenant-scoped in the store — or Pinecone. |
 | `observability.py` | Tracing: one trace per run; spans + metrics. |
-| `store.py` | SQLite: specs, templates, MCP, **runs**, traces, audit, compiler logs (thread-safe). |
+| `store.py` | Pluggable persistence: **SQLite** (durable file default, WAL) or **Postgres** via `DATABASE_URL`. Versioned recorded migrations, indexes on hot tenant/time/status columns, promoted queryable columns, and **SQL-side analytics** (no full-blob scans). Tenant-scoped. |
 | `vault.py` | Secrets resolved by ref at call time, never stored in specs/logs. |
 | `app.py` | FastAPI surface + auth + serves the frontend. |
 | `../frontend/index.html` | The single-page app (all views above). |
@@ -166,9 +177,21 @@ OpenTelemetry-style tracing · single-file vanilla SPA frontend (drop-in replace
 
 ## Running the project
 
-**Windows:** double-click **`run.bat`**, then open **http://localhost:8000**.
+**Docker (recommended — one command, batteries included):**
 
-**Any OS:**
+```bash
+cp .env.example .env          # optional: add a GROQ_API_KEY for LLM reasoning
+docker compose up --build     # SQLite, durable via a named volume
+# or, with Postgres:
+docker compose --profile postgres up --build
+```
+
+Open **http://localhost:8000**. The container ships `tesseract` + `poppler` (KYC OCR), runs as a
+non-root user, persists data on a volume, and exposes a `/healthz` probe.
+
+**Windows (no Docker):** double-click **`run.bat`**, then open **http://localhost:8000**.
+
+**Any OS (no Docker):**
 
 ```bash
 cd backend
@@ -179,19 +202,23 @@ python -m uvicorn fingent.app:app --port 8000
 
 Open **http://localhost:8000** (not the raw HTML file — it must be served so `/api/*` resolves).
 
-Run the test suite:
+Run the test suite (also runs in CI on every push — see `.github/workflows/ci.yml`):
 
 ```bash
-cd backend && python -m pytest -q      # 24 offline tests
+cd backend && python -m pytest -q      # ~150 tests; offline & deterministic
 ```
 
 ### Environment variables
 
 | Variable | Effect |
 |---|---|
-| `GROQ_API_KEY` | Use real **Llama** for the compiler **and** the runtime reasoning loop (`mode: "llm"`). Without it, a clearly-labelled deterministic engine runs (`mode: "demo"`). |
-| `GROQ_MODEL` | Model id (default `llama-3.3-70b-versatile`). |
+| `FINGENT_LLM_API_KEY` / `GROQ_API_KEY` | API key for the reasoning model. When set, the runtime uses the real LLM tool-calling loop (`mode: "llm"`); without it the agent still runs its real tools deterministically and composes a decision from their outputs (`mode: "rules"`, nothing simulated). |
+| `FINGENT_LLM_BASE_URL` | OpenAI-compatible base URL for the model gateway (default Groq `https://api.groq.com/openai/v1`). Point at OpenAI / Azure OpenAI / self-hosted vLLM, etc. |
+| `FINGENT_LLM_MODEL` / `GROQ_MODEL` | Model id (default `llama-3.3-70b-versatile`). |
 | `FINGENT_DB` | SQLite path; defaults to `:memory:` (set a file to persist). |
+| `FINGENT_EMBED_API_KEY` | Enables **real semantic** long-term memory via an OpenAI-compatible `/embeddings` API (with `FINGENT_EMBED_BASE_URL`, `FINGENT_EMBED_MODEL`). Without it (and without sentence-transformers) memory uses a clearly-flagged lexical fallback. |
+| `FINGENT_EMBED_BACKEND` | `sentence-transformers` to embed locally (no API key), or `hashing` to force the lexical fallback. |
+| `PINECONE_API_KEY` | Use Pinecone as the durable vector memory backend (else the platform store persists vectors). |
 | `FINGENT_LIVE_DATA` | **Live tools are ON by default.** Set `0` to force the offline deterministic fallback (used by the test suite). |
 | `TAVILY_API_KEY` | Live web search (`web_search`). Without it, `web_search` falls back to keyless news headlines. |
 | `OPENSANCTIONS_API_KEY` | Live PEP screening (`pep_check`) via OpenSanctions. |
@@ -224,15 +251,22 @@ GTM discovery demo: create the Tier-1 agents (signal_trigger → … → synthes
 | Tool | Live source | Key needed |
 |---|---|---|
 | `edgar_search` | SEC EDGAR full-text search | no |
-| `ofac_screen` | US Treasury **OFAC SDN list** (cached) | no |
-| `news_monitor`, `adverse_media_search` | Google News RSS | no |
+| `company_financials` | **SEC EDGAR XBRL company-facts** — real, period-aligned 10-K revenue / net income / assets / equity + credit ratios (powers underwriting) | no |
+| `verify_entity` | **GLEIF LEI registry** — real legal-entity verification (KYB): legal name, LEI, status, jurisdiction | no |
+| `bank_lookup` | **FDIC BankFind Suite** — real US bank/counterparty profile (assets, deposits, charter, status) | no |
+| `fx_rate` | **Frankfurter / ECB** — real FX reference rates | no |
+| `treasury_rates` | **US Treasury Fiscal Data** — real average interest rates (benchmark cost of funds) | no |
+| `ofac_screen` | US Treasury **OFAC SDN** (cached) + **real entity resolution**: normalized-token + edit-distance fuzzy matching with scored, classified candidates (exact/strong/partial), not a substring boolean | no |
+| `news_monitor` | Google News RSS | no |
+| `adverse_media_search` | Google News RSS + **real adverse-media NLP**: per-headline risk-category classification (financial-crime/sanctions/corruption/legal/regulatory/terrorism), negation handling, aggregate 0–100 risk score | no |
+| `ocr_extract` (KYC doc intelligence) | **Real document extraction**: PDF text via pdfplumber/pypdf, scanned images via **Tesseract OCR** (multi-page scanned PDFs rendered with **poppler**), plus **table extraction** and **form key-value** parsing (account/IBAN, DOB, tax id, beneficial-owner tables) and regex fields. Groq vision model as a fallback for image URLs | no (tesseract + poppler for scans) |
 | `reg_feed_ingest` | US **Federal Register** API | no |
-| `enrich_company` | Clearbit autocomplete (firmographics estimated) | no |
+| `enrich_company` | **Real public-company firmographics from SEC EDGAR** company-facts (revenue / net income / assets from the latest 10-K XBRL, free, no key); Clearbit autocomplete for domain/logo; `ENRICH_API_URL` for private-company providers | no |
 | `web_search` | Tavily (→ news fallback) | `TAVILY_API_KEY` |
-| `pep_check` | OpenSanctions | `OPENSANCTIONS_API_KEY` |
-| `find_persona` | People Data Labs | `PEOPLE_DATA_API_KEY` |
-| `resolve_contact` | Hunter.io | `HUNTER_API_KEY` |
-| `identity_verify` (KYC) | KYC provider (else real structural checks) | `KYC_API_KEY` |
+| `pep_check` | OpenSanctions (live); offline runs the **same entity-resolution engine** against a PEP fixture (scored), never a flat boolean | `OPENSANCTIONS_API_KEY` |
+| `find_persona` | People Data Labs (live); without a key returns **target decision-maker titles** (heuristic) — no fabricated individuals | `PEOPLE_DATA_API_KEY` |
+| `resolve_contact` | Hunter.io (live); without a key returns **ranked email-pattern candidates with confidence** (real heuristic, clearly labelled) | `HUNTER_API_KEY` |
+| `identity_verify` (KYC) | KYC provider at `KYC_API_URL` (else real structural checks) | `KYC_API_URL` (+ `KYC_API_KEY`) |
 | `account_lookup` (servicing) | core-banking / CRM endpoint | `ACCOUNT_API_URL` |
 | `parse_financials`, `compute_ratios`, `risk_score`, `compliance_check`, `anomaly_detect` | **pure computation (always real)** | no |
 
@@ -242,23 +276,14 @@ GTM discovery demo: create the Tier-1 agents (signal_trigger → … → synthes
   deployable HTTP endpoint.
 - **Fallback / demo:** when a live call fails, times out, or a key is missing, the tool returns a
   clearly-labelled deterministic sample so the platform still runs fully offline (and tests stay
-  deterministic). The runtime is `mode: "demo"` (keyword-driven) until `GROQ_API_KEY` is set,
-  then `mode: "llm"`. `ocr_extract` and the sample MCP tools remain mocks behind the real
-  approval + grant flow.
+  deterministic). The runtime is `mode: "rules"` (real tools, deterministic decision) until
+  `GROQ_API_KEY` is set, then `mode: "llm"` (adaptive reasoning). `ocr_extract` now does **real** local extraction (PDF text + Tesseract image OCR); only a no-document offline call returns a labelled sample.
+- **MCP is real:** registering an approved server opens a live MCP session to its URL
+  (Streamable HTTP, JSON-RPC `initialize` + `tools/list`), registers the server's actual
+  tools, and proxies calls to it via `tools/call`. Discovery is cached so registered MCP
+  tools survive a restart; offline (no key / unreachable) a labelled demo catalog is used.
 
 ## Known limitations
 
 - `find_persona` / `resolve_contact` / `pep_check` / `web_search` need a (free-tier) API key to
-  go live; without it they fall back to samples. `enrich_company` firmographics are estimated
-  (autocomplete is keyless).
-- Auth is token/session based (no full IdP/RBAC yet).
-- SQLite + in-process registry; move to Postgres + a job runner for scale.
-- The deterministic runtime calls each allowed tool once; the LLM runtime is the dynamic planner.
-
-## Next improvements
-
-- Real connectors (Salesforce/HubSpot enrichment, live news, email send) behind the existing
-  tool/permission layer.
-- Streaming run traces + websocket live view.
-- Per-tool approval policies and richer risk rules per tenant.
-- Postgres/Supabase persistence, background workers, and an OTel/LangSmith exporter.
+  go live; without it they 
