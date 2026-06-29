@@ -192,6 +192,10 @@ class LlmProvider:
                     "role": "assistant", "content": msg.get("content"),
                     **({"tool_calls": msg["tool_calls"]} if msg.get("tool_calls") else {})}}
                 return
+            # SSE responses often omit a charset, so requests defaults to ISO-8859-1 and
+            # iter_lines(decode_unicode=True) would mangle multibyte UTF-8 (e.g. an em-dash
+            # becomes "â€""). Force UTF-8 so streamed model text is decoded correctly.
+            resp.encoding = "utf-8"
             for raw in resp.iter_lines(decode_unicode=True):
                 if not raw or not raw.startswith("data:"):
                     continue

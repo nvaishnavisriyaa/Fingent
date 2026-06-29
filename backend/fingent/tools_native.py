@@ -122,22 +122,55 @@ def _rss_titles(query: str, limit: int = 5) -> list[str]:
 # Tier 1 (GTM) — discovery
 # --------------------------------------------------------------------------- #
 def edgar_search(query: str = "", **_):
-    """Live SEC EDGAR full-text search (real filings)."""
-    if _live():
+    """Live SEC EDGAR filings for a company. Resolves the company NAME/ticker to its CIK and
+    returns THAT company's actual recent filings — not a full-text match, which would surface
+    unrelated filers that merely share a word in their name (e.g. 'Apple' -> Apple Hospitality
+    REIT). Falls back to EDGAR full-text search only for non-company / free-text queries."""
+    if _live() and query:
+        # 1. company -> CIK -> that exact company's recent filings (the correct, precise path)
         try:
-            r = _get("https://efts.sec.gov/LATEST/search-index",
-                     params={"q": query or "fintech", "forms": "8-K"})
+            cik = _resolve_cik(query)
+        except Exception:  # noqa: BLE001 — source outage, fall through to full-text/unavailable
+            cik = None
+        if cik:
+            try:
+                r = _get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json", timeout=20)
+                if r.ok:
+                    j = r.json()
+                    name = j.get("name", query)
+                    rec = (j.get("filings", {}) or {}).get("recent", {}) or {}
+                    forms, dates = rec.get("form", []), rec.get("filingDate", [])
+                    # surface MATERIAL filings (annual/quarterly/current reports, prospectuses,
+                    # proxies) ahead of routine ones (Form 4 insider notices dominate by volume)
+                    material = {"10-K", "10-Q", "8-K", "20-F", "40-F", "6-K", "S-1",
+                               "DEF 14A", "10-K/A", "10-Q/A", "8-K/A"}
+                    order = ([i for i in range(len(forms)) if forms[i] in material]
+                             + [i for i in range(len(forms)) if forms[i] not in material])
+                    filings = []
+                    for i in order[:5]:
+                        d = dates[i] if i < len(dates) else ""
+                        filings.append({"company": name, "form": forms[i], "filed": d,
+                                        "summary": f"{forms[i]} filed {d} by {name}"})
+                    if filings:
+                        return {"source": "live:SEC EDGAR", "query": query, "cik": int(cik),
+                                "company": name, "filings": filings}
+            except Exception:  # noqa: BLE001
+                pass
+        # 2. fallback: full-text search for a free-text / non-company query
+        try:
+            r = _get("https://efts.sec.gov/LATEST/search-index", params={"q": query})
             if r.ok:
-                hits = (r.json().get("hits", {}) or {}).get("hits", [])[:3]
+                hits = (r.json().get("hits", {}) or {}).get("hits", [])[:5]
                 filings = []
                 for h in hits:
                     src = h.get("_source", {}) or {}
                     names = src.get("display_names") or ["(unknown filer)"]
                     filings.append({"company": names[0], "form": src.get("form", "?"),
                                     "filed": src.get("file_date", ""),
-                                    "summary": f"{src.get('form', 'filing')} — {names[0]}"})
+                                    "summary": f"{src.get('form', 'filing')} by {names[0]}"})
                 if filings:
-                    return {"source": "live:SEC EDGAR", "query": query, "filings": filings}
+                    return {"source": "live:SEC EDGAR (full-text)", "query": query,
+                            "filings": filings}
         except Exception:  # noqa: BLE001
             pass
     if _live():
@@ -939,20 +972,30 @@ def verify_entity(name: str = "", company: str = "", **_):
     q = (company or name or "").strip()
     if _live() and q:
         try:
+            # Search by LEGAL NAME, not fulltext: fulltext ranks loosely and surfaces unrelated
+            # filers / subsidiaries / 401(k) plans ahead of the entity itself. The legalName
+            # filter returns the actual named entity (e.g. 'Apple Inc.' with its real LEI).
             r = _get("https://api.gleif.org/api/v1/lei-records",
-                     params={"filter[fulltext]": q, "page[size]": 5},
+                     params={"filter[entity.legalName]": q, "page[size]": 10},
                      headers={"Accept": "application/vnd.api+json"}, timeout=10)
             if r.ok:
                 records = r.json().get("data", []) or []
                 if records:
-                    attr = (records[0].get("attributes") or {})
+                    def _legal_name(rr):
+                        return (((rr.get("attributes") or {}).get("entity") or {})
+                                .get("legalName") or {}).get("name") or ""
+                    # require an EXACT normalized legal-name match to call it verified; otherwise
+                    # report the closest record but verified=False (honest: not confirmed).
+                    qt = _norm_tokens(q)
+                    best = next((rr for rr in records if _norm_tokens(_legal_name(rr)) == qt), None)
+                    chosen = best or records[0]
+                    attr = (chosen.get("attributes") or {})
                     ent = attr.get("entity") or {}
                     reg = attr.get("registration") or {}
                     legal_name = (ent.get("legalName") or {}).get("name")
-                    candidates = [((rr.get("attributes") or {}).get("entity") or {}).get(
-                        "legalName", {}).get("name") for rr in records]
+                    candidates = [_legal_name(rr) for rr in records]
                     return {"source": "live:GLEIF LEI", "query": q, "found": True,
-                            "verified": bool(legal_name and q.lower() in legal_name.lower()),
+                            "verified": best is not None,
                             "lei": attr.get("lei"), "legal_name": legal_name,
                             "entity_status": ent.get("status"),
                             "registration_status": reg.get("status"),
