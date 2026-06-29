@@ -127,11 +127,12 @@ def edgar_search(query: str = "", **_):
     unrelated filers that merely share a word in their name (e.g. 'Apple' -> Apple Hospitality
     REIT). Falls back to EDGAR full-text search only for non-company / free-text queries."""
     if _live() and query:
+        outage = False   # only a real network/HTTP failure is an outage; "no filings" is a clean negative
         # 1. company -> CIK -> that exact company's recent filings (the correct, precise path)
         try:
             cik = _resolve_cik(query)
-        except Exception:  # noqa: BLE001 — source outage, fall through to full-text/unavailable
-            cik = None
+        except Exception:  # noqa: BLE001 — genuine source outage
+            cik, outage = None, True
         if cik:
             try:
                 r = _get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json", timeout=20)
@@ -154,8 +155,10 @@ def edgar_search(query: str = "", **_):
                     if filings:
                         return {"source": "live:SEC EDGAR", "query": query, "cik": int(cik),
                                 "company": name, "filings": filings}
+                else:
+                    outage = True
             except Exception:  # noqa: BLE001
-                pass
+                outage = True
         # 2. fallback: full-text search for a free-text / non-company query
         try:
             r = _get("https://efts.sec.gov/LATEST/search-index", params={"q": query})
@@ -171,11 +174,20 @@ def edgar_search(query: str = "", **_):
                 if filings:
                     return {"source": "live:SEC EDGAR (full-text)", "query": query,
                             "filings": filings}
+            else:
+                outage = True
         except Exception:  # noqa: BLE001
-            pass
-    if _live():
+            outage = True
+        if outage:   # a real source failure — flag it so the runtime can hard-fail honestly
+            return {"source": "unavailable", "live": False, "query": query, "filings": [],
+                    "note": "SEC EDGAR was unreachable; no filings fabricated."}
+        # EDGAR answered but this company simply has no filings -> CLEAN NEGATIVE, not an outage
+        return {"source": "live:SEC EDGAR", "query": query, "found": False, "filings": [],
+                "note": "no SEC EDGAR filings match this company (not a US public filer) — a valid "
+                        "negative result, not a failure"}
+    if _live():   # live mode but no query to search — never fabricate a sample
         return {"source": "unavailable", "live": False, "query": query, "filings": [],
-                "note": "SEC EDGAR returned no live results or was unreachable; no filings fabricated."}
+                "note": "no company/query provided to search SEC EDGAR"}
     return {"source": "mock", "filings": [{"company": query or "Acme Corp", "form": "8-K",
                                            "summary": "Announced $50M debt facility and new CFO."}]}
 
@@ -185,23 +197,27 @@ def news_monitor(company: str = "", **_):
     if _live() and company:
         try:
             titles = _rss_titles(company, 6)
-            if titles:
-                signals = []
-                for t in titles:
-                    low = t.lower()
-                    typ = ("new_cfo" if ("cfo" in low or "treasurer" in low or "chief financial" in low)
-                           else "funding" if any(w in low for w in ("raises", "funding", "series", "round"))
-                           else "debt" if any(w in low for w in ("debt", "loan", "credit facility", "bond"))
-                           else "layoffs" if any(w in low for w in ("layoff", "job cut", "redundanc"))
-                           else "expansion" if any(w in low for w in ("expands", "launch", "acquire", "international"))
-                           else "news")
-                    signals.append({"company": company, "type": typ, "headline": t})
-                return {"source": "live:Google News", "company": company, "signals": signals}
-        except Exception:  # noqa: BLE001
-            pass
-    if _live():
+        except Exception:  # noqa: BLE001 — genuine Google News outage
+            return {"source": "unavailable", "live": False, "company": company, "signals": [],
+                    "note": "Google News was unreachable; nothing fabricated."}
+        if titles:
+            signals = []
+            for t in titles:
+                low = t.lower()
+                typ = ("new_cfo" if ("cfo" in low or "treasurer" in low or "chief financial" in low)
+                       else "funding" if any(w in low for w in ("raises", "funding", "series", "round"))
+                       else "debt" if any(w in low for w in ("debt", "loan", "credit facility", "bond"))
+                       else "layoffs" if any(w in low for w in ("layoff", "job cut", "redundanc"))
+                       else "expansion" if any(w in low for w in ("expands", "launch", "acquire", "international"))
+                       else "news")
+                signals.append({"company": company, "type": typ, "headline": t})
+            return {"source": "live:Google News", "company": company, "signals": signals}
+        # Google News answered with no headlines -> CLEAN NEGATIVE (no signals), not an outage
+        return {"source": "live:Google News", "company": company, "signals": [], "found": False,
+                "note": "no recent news signals found for this company — a valid negative result"}
+    if _live():   # live mode but no company provided — never fabricate a sample
         return {"source": "unavailable", "live": False, "company": company, "signals": [],
-                "note": "No live news signals (provide a company; Google News may be unreachable); nothing fabricated."}
+                "note": "no company provided to search Google News"}
     return {"source": "mock", "signals": [
         {"company": company or "Acme Corp", "type": "new_cfo",
          "headline": "Acme Corp names Jane Doe as CFO"},
