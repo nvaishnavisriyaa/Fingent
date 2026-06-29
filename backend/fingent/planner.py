@@ -140,14 +140,19 @@ class Planner:
             visit(s.name)
         return order
 
-    def plan_graph(self, specs: list, goal: str = "", inputs: dict | None = None) -> PlanGraph:
+    def plan_graph(self, specs: list, goal: str = "", inputs: dict | None = None,
+                   strict: bool = False) -> PlanGraph:
         """Build the runtime task graph. With a model configured and more than one agent, the LLM
         decomposes the goal into a plan (validated deterministically); otherwise the dependency
-        toposort is used. Either way the result is a single PlanGraph the executor runs."""
+        toposort is used. Either way the result is a single PlanGraph the executor runs.
+
+        strict=True forces every supplied agent to appear in the plan (the planner may reorder /
+        decompose but not drop a required agent); strict=False (default) lets it pick a relevant
+        subset (the GTM-discovery design)."""
         provider = LlmProvider()
         if provider.enabled and len(specs) > 1:
             try:
-                g = self._llm_plan(provider, specs, goal, inputs or {})
+                g = self._llm_plan(provider, specs, goal, inputs or {}, strict)
             except Exception:  # noqa: BLE001 — a planning failure must never break the run
                 g = None
             if g is not None and g.steps:
@@ -172,7 +177,7 @@ class Planner:
                          reasoning="Derived from declared agent dependencies "
                                    "(no model configured for dynamic planning).")
 
-    def _llm_plan(self, provider, specs: list, goal: str, inputs: dict):
+    def _llm_plan(self, provider, specs: list, goal: str, inputs: dict, strict: bool = False):
         catalog = [
             {"name": s.name, "purpose": (s.purpose or s.role_prompt or "")[:200],
              "tools": list(s.tools), "tier": s.tier}
@@ -187,10 +192,10 @@ class Planner:
         ]
         msg = provider.chat(messages, temperature=0.1, response_format={"type": "json_object"})
         raw = json.loads(msg.get("content") or "{}")
-        return self._validate_plan(raw, specs, goal_text)
+        return self._validate_plan(raw, specs, goal_text, strict)
 
     # ----- the validator (DISPOSES the LLM's proposed plan) -------------- #
-    def _validate_plan(self, raw: dict, specs: list, goal: str):
+    def _validate_plan(self, raw: dict, specs: list, goal: str, strict: bool = False):
         """Reduce an LLM-proposed plan to a safe, executable DAG: drop steps naming unknown
         agents, drop duplicate agents, force any synthesis agent last, and keep only forward
         dependency edges (so the graph is acyclic by construction). Returns None if nothing
