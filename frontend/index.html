@@ -54,7 +54,8 @@
   .tenant label{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
   .tenant select{border:none;background:transparent;color:var(--ink);font:inherit;font-weight:600;font-size:13px;cursor:pointer;outline:none}
   .avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0a8f5b,#13386b);color:#fff;
-        display:grid;place-items:center;font-weight:700;font-size:13px}
+        display:grid;place-items:center;font-weight:700;font-size:13px;cursor:pointer}
+  .avatar:hover{box-shadow:0 0 0 2px rgba(10,143,91,.35)}
   .content{padding:26px 30px 60px;max-width:1320px;width:100%;margin:0 auto}
 
   /* ---------- generic ---------- */
@@ -1444,11 +1445,10 @@ function showLogin(){
         <div style="text-align:center;margin-bottom:16px">
           <div class="li-ic" style="background:linear-gradient(135deg,#0b2545,#13386b);width:46px;height:46px;margin:0 auto 10px;font-size:18px">F</div>
           <h2>Sign in to Fingent</h2><div class="small muted">Agentic platform for financial services</div></div>
-        <label class="fld">Username</label><input id="lu" value="admin" autocomplete="username">
-        <label class="fld">Password</label><input id="lp" type="password" autocomplete="current-password">
+        <label class="fld">Username</label><input id="lu" placeholder="Username" autocomplete="username">
+        <label class="fld">Password</label><input id="lp" type="password" placeholder="Password" autocomplete="current-password">
         <div id="lerr"></div>
         <button class="btn primary" id="lbtn" style="width:100%;justify-content:center;margin-top:16px">Sign in</button>
-        <div class="small muted" style="text-align:center;margin-top:12px">Demo credentials: <b>admin</b> / <b>admin</b></div>
       </div></div>`;
   const go=async()=>{
     const lerr=document.getElementById('lerr'); lerr.innerHTML='';
@@ -1483,12 +1483,16 @@ async function boot(){
   try{cfg=await api('/config');}catch(_){}
   STATE.modelConfigured=(cfg.model_configured!==false); STATE.modelName=cfg.model_name||null;
   STATE.allowHeaderTenant=!!cfg.allow_header_tenant;
-  let realTenant=cfg.default_tenant||'acme';
+  let realTenant=cfg.default_tenant||'acme'; let principal='';
   if(cfg.auth_required){
     if(!authToken()) return showLogin();
-    try{const me=await api('/me');realTenant=me.tenant;}
+    try{const me=await api('/me');realTenant=me.tenant;principal=me.principal||'';}
     catch(_){try{sessionStorage.removeItem('fin_token');}catch(__){}return showLogin();}
   }
+  // make the avatar's logout affordance discoverable when signed in
+  const av=document.getElementById('avatar');
+  av.title=authToken()?('Signed in'+(principal?' as '+principal:'')+' — click to sign out'):'';
+  if(authToken()&&principal) av.textContent=principal[0].toUpperCase();
   applyTenantMode(realTenant);
   render();
 }

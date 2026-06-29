@@ -698,13 +698,16 @@ def hitl(body: HitlBody, x_tenant: str | None = Header(default=None),
 
 
 # ---- frontend -----------
+# The SPA is a single file that changes often; tell the browser to always revalidate so a
+# deploy/edit is picked up on the next load instead of being served stale from disk cache.
+_NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 if os.path.isdir(FRONTEND_DIR):
     @app.get("/")
     def index():
-        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), headers=_NO_CACHE)
 
     @app.get("/chat")
     def chat_ui():
-        return FileResponse(os.path.join(FRONTEND_DIR, "chat.html"))
+        return FileResponse(os.path.join(FRONTEND_DIR, "chat.html"), headers=_NO_CACHE)
 
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
