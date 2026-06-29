@@ -49,7 +49,18 @@ CATALOG: list[AgentTemplate] = [
     AgentTemplate(
         name="icp_matching", tier=1,
         description="Score companies vs firmographic + financial-health ICP.",
-        fixed={"base_role": "Score companies against the firmographic + financial-health ICP."},
+        fixed={"base_role": "Score companies against the firmographic + financial-health ICP. "
+                            "Call enrich_company first. If enrichment is incomplete or missing "
+                            "fields needed by the ICP, call web_search for public evidence about "
+                            "each configured ICP criterion, such as industry, size, geography, "
+                            "funding, business model, buyer persona, pain points, budget, "
+                            "technology stack and financial-health signals. "
+                            "Then return a numeric ICP score from 0.0 to 1.0, never N/A. "
+                            "Build the rubric from the user's ICP rather than a fixed checklist. "
+                            "If no weights are supplied, weight required criteria equally and use "
+                            "nice-to-have criteria as smaller tie-breakers. Cap the score when any "
+                            "required criterion fails, and cap it more strongly when multiple "
+                            "required criteria fail. Explain failed criteria and data gaps."},
         parameters=[_name_param(),
                     TemplateParameter(name="min_score", type="number", label="Minimum match score (0-1)",
                                       default=0.6, min=0, max=1),
@@ -224,12 +235,12 @@ CATALOG: list[AgentTemplate] = [
 # Explicit least-privilege DEFAULT grants (a subset of each template's grantable_tools).
 # The compiler grants only these by default; anything else must be explicitly requested in
 # the free-text field. web_search returns UNTRUSTED content, so it is opt-in everywhere
-# except templates whose whole job is web/orchestration — it is NOT auto-granted to
+# except templates whose whole job is web/orchestration or ICP research — it is NOT auto-granted to
 # screening/financial agents just because it sits in their grantable universe (§10).
 _REQUIRED_TOOLS = {
     "planner": [],
     "signal_trigger": ["news_monitor", "edgar_search"],
-    "icp_matching": ["enrich_company"],
+    "icp_matching": ["enrich_company", "web_search"],
     "enrichment_validation": ["enrich_company", "verify_entity", "edgar_search"],
     "persona_decision_maker": ["find_persona"],
     "contact": ["resolve_contact"],
