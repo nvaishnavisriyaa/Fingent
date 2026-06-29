@@ -253,40 +253,98 @@ def find_persona(company: str = "", **_):
                     "PEOPLE_DATA_API_KEY to resolve real individuals"}
 
 
-def resolve_contact(name: str = "", company: str = "", **_):
-    """Resolve a person's work email. Live via Hunter.io (HUNTER_API_KEY + a domain) returns a
-    VERIFIED email; otherwise returns a clearly-labelled UNVERIFIED best-guess email pattern, so the
-    agent always has something actionable instead of a dead 'not found'."""
-    key = _secret("HUNTER_API_KEY")
-    # Derive a usable domain: use the company as-is if it already looks like a domain, else turn a
-    # plain company NAME into a best-guess domain ("Stripe" -> "stripe.com").
+def _guess_domain(company: str) -> str:
+    """A suffix-stripped best-guess email domain from a company NAME ('Zoho Corporation' ->
+    'zoho.com', 'Stripe' -> 'stripe.com'). If the input already looks like a domain, use it."""
     raw = (company or "").strip().replace("https://", "").replace("http://", "").strip("/ ")
-    domain = raw if "." in raw else (re.sub(r"[^a-z0-9]", "", raw.lower()) + ".com" if raw else "")
-    if _live() and key and name and domain:
-        try:
-            first, _, last = name.partition(" ")
-            r = _get("https://api.hunter.io/v2/email-finder",
-                     params={"domain": domain, "first_name": first, "last_name": last,
-                             "api_key": key})
-            if r.ok:
-                d = r.json().get("data", {})
-                if d.get("email"):
-                    return {"source": "live:Hunter.io", "verified": True, "name": name,
-                            "email": d["email"], "linkedin": d.get("linkedin"),
-                            "phone": d.get("phone_number")}
-        except Exception:  # noqa: BLE001
-            pass
-    # No VERIFIED email (no key / invalid key / error / no match): return the best-guess email
-    # pattern, CLEARLY labelled unverified (verified=False, source is 'computed', loud note). This
-    # is a prediction — exactly what Hunter/Clearbit start from — never presented as confirmed data.
-    candidates = realtools.email_candidates(name, domain)
-    top = candidates[0] if candidates else None
+    if not raw:
+        return ""
+    if "." in raw:
+        return raw
+    core = "".join(t for t in re.sub(r"[^a-z0-9 ]", " ", raw.lower()).split()
+                   if t not in _CORP_STOP) or re.sub(r"[^a-z0-9]", "", raw.lower())
+    return core + ".com"
+
+
+_CLEARBIT_CACHE: dict = {}
+
+
+def _clearbit_domains(company: str) -> list:
+    """Real registered domains for a company NAME via Clearbit autocomplete (free, no key), so we
+    can resolve companies whose name != domain ('Tata Consultancy Services' -> tcs.com). Exact
+    normalized-name matches first, then other suggestions. Returns [] offline / on error.
+
+    NOTE: Clearbit returns the WEBSITE domain, which for a holding company can differ from the
+    EMAIL domain (Alphabet -> abc.xyz, but employees use google.com). So these are only
+    *candidates* to validate via Hunter — never presented as the answer on their own."""
+    raw = (company or "").strip()
+    if not raw or "." in raw or not _live():
+        return []
+    if raw in _CLEARBIT_CACHE:
+        return _CLEARBIT_CACHE[raw]
+    domains: list = []
+    try:
+        r = _get("https://autocomplete.clearbit.com/v1/companies/suggest",
+                 params={"query": raw}, timeout=8)
+        sugg = [s for s in (r.json() if r.ok else []) if s.get("domain")]
+        qt = _norm_tokens(raw)
+        ordered = ([s for s in sugg if _norm_tokens(s.get("name", "")) == qt]
+                   + [s for s in sugg if _norm_tokens(s.get("name", "")) != qt])
+        for s in ordered:
+            if s["domain"] not in domains:
+                domains.append(s["domain"])
+    except Exception:  # noqa: BLE001
+        domains = []
+    _CLEARBIT_CACHE[raw] = domains
+    return domains
+
+
+def resolve_contact(name: str = "", company: str = "", **_):
+    """Resolve a person's work email. Tries Hunter.io (HUNTER_API_KEY) across candidate domains and
+    returns a VERIFIED email from the domain that actually hosts it; otherwise returns a clearly
+    labelled UNVERIFIED best-guess pattern. Works for any company because the EMAIL domain is
+    validated by Hunter, not assumed from a website-domain lookup."""
+    key = _secret("HUNTER_API_KEY")
+    # Candidate email domains to try, in order: the suffix-stripped guess (usually the email
+    # domain), then real registered domains from Clearbit (rescues name != domain companies).
+    guess = _guess_domain(company)
+    candidates: list = []
+    for d in ([guess] + _clearbit_domains(company)):
+        if d and d not in candidates:
+            candidates.append(d)
+    candidates = candidates[:4]   # cap Hunter calls
+
+    if _live() and key and name and candidates:
+        first, _, last = name.partition(" ")
+        for d in candidates:
+            try:
+                r = _get("https://api.hunter.io/v2/email-finder",
+                         params={"domain": d, "first_name": first, "last_name": last,
+                                 "api_key": key})
+            except Exception:  # noqa: BLE001
+                continue
+            if not r.ok:
+                continue
+            data = r.json().get("data", {})
+            if data.get("email"):   # Hunter confirms emails exist at THIS domain -> trustworthy
+                return {"source": "live:Hunter.io", "verified": True, "name": name,
+                        "company_domain": d, "email": data["email"],
+                        "linkedin": data.get("linkedin"), "phone": data.get("phone_number")}
+
+    # No VERIFIED email (no key / no Hunter match at any candidate): return the best-guess email
+    # pattern on the most-likely email domain (the guess), CLEARLY labelled unverified. This is a
+    # prediction — exactly what Hunter/Clearbit start from — never presented as confirmed data.
+    domain = guess or (candidates[0] if candidates else "")
+    cand_emails = realtools.email_candidates(name, domain)
+    top = cand_emails[0] if cand_emails else None
     return {"source": "computed:email-heuristic", "live": False, "verified": False, "name": name,
-            "company_domain": domain, "email": (top["email"] if top else None),
-            "confidence": (top["confidence"] if top else None), "candidates": candidates,
+            "company_domain": domain, "domains_considered": candidates,
+            "email": (top["email"] if top else None),
+            "confidence": (top["confidence"] if top else None), "candidates": cand_emails,
             "status": "unverified_guess",
-            "note": "UNVERIFIED best-guess email pattern (not confirmed). Set a valid HUNTER_API_KEY "
-                    "to resolve and verify the real email."}
+            "note": "UNVERIFIED best-guess email pattern (not confirmed). Hunter.io found no "
+                    "verified email at the candidate domains; the address shown is a heuristic "
+                    "prediction, not real data."}
 
 
 # --------------------------------------------------------------------------- #
@@ -447,19 +505,117 @@ def parse_financials(text: str = "", **_):
             "current_assets": 18_000_000, "current_liabilities": 11_000_000}
 
 
-def compute_ratios(financials: dict | None = None, **_):
-    """Always real — pure computation over the provided financials."""
-    f = financials or {}
+def _safe_div(a, b, ndigits=4):
     try:
-        return {"source": "computed",
-                "current_ratio": round(f["current_assets"] / f["current_liabilities"], 2),
-                "debt_to_ebitda": round(f["total_debt"] / f["ebitda"], 2),
-                "ebitda_margin": round(f["ebitda"] / f["revenue"], 3)}
-    except (KeyError, ZeroDivisionError, TypeError):
+        if a is None or b in (None, 0):
+            return None
+        return round(a / b, ndigits)
+    except (TypeError, ZeroDivisionError):
+        return None
+
+
+def compute_ratios(financials: dict | None = None, **_):
+    """Always real — pure computation over WHATEVER financials are provided. Accepts both the
+    statement schema (current_assets / current_liabilities / total_debt / ebitda) AND the SEC
+    EDGAR schema (revenue / net_income / total_assets / stockholders_equity / total_liabilities),
+    and the full company_financials output (fields at top level + a nested 'ratios'). Computes
+    every ratio derivable from the fields present rather than failing if one is missing."""
+    f = dict(financials or {})
+    # carry forward any ratios company_financials already computed
+    out = {"source": "computed"}
+    out.update({k: v for k, v in (f.get("ratios") or {}).items() if v is not None})
+
+    cur_assets, cur_liab = f.get("current_assets"), f.get("current_liabilities")
+    ebitda, total_debt = f.get("ebitda"), f.get("total_debt")
+    rev, ni = f.get("revenue"), f.get("net_income")
+    assets, equity = f.get("total_assets"), f.get("stockholders_equity")
+    liabilities = f.get("total_liabilities")
+    if liabilities is None and assets is not None and equity is not None:
+        liabilities = assets - equity
+
+    candidates = {
+        "current_ratio": _safe_div(cur_assets, cur_liab, 2),
+        "debt_to_ebitda": _safe_div(total_debt, ebitda, 2),
+        "ebitda_margin": _safe_div(ebitda, rev, 3),
+        "net_margin": _safe_div(ni, rev),
+        "debt_to_equity": _safe_div(liabilities if liabilities is not None else total_debt, equity),
+        "equity_ratio": _safe_div(equity, assets),
+        "return_on_assets": _safe_div(ni, assets),
+    }
+    for k, v in candidates.items():
+        if v is not None:
+            out[k] = v
+
+    if len(out) <= 1:   # only "source" -> nothing was derivable
         return {"source": "computed", "error": "insufficient financials to compute ratios"}
+    return out
 
 
-_EDGAR_CIK_MAP: dict | None = None
+_EDGAR_CIK_MAP: dict | None = None          # raw ticker/title -> cik (exact lookups)
+_EDGAR_TITLE_TOKENS: list | None = None     # [(token_set, cik)] for normalized name matching
+
+# Common corporate suffixes/stopwords dropped when comparing a typed name to a SEC legal title
+# (so "Microsoft Corporation" matches SEC's "MICROSOFT CORP").
+_CORP_STOP = {
+    "inc", "incorporated", "corp", "corporation", "co", "company", "companies", "ltd",
+    "limited", "llc", "lp", "plc", "the", "holdings", "holding", "group", "sa", "ag",
+    "nv", "se", "spa", "and", "of",
+}
+# Well-known consumer brand -> SEC ticker, for names that differ from the legal filer name.
+_BRAND_TICKER_ALIASES = {
+    "google": "googl", "alphabet": "googl", "facebook": "meta", "fb": "meta",
+    "instagram": "meta", "whatsapp": "meta", "youtube": "googl",
+}
+
+
+def _norm_tokens(name: str) -> set:
+    """Lowercase, strip punctuation, drop corporate suffixes -> a comparable token set."""
+    cleaned = re.sub(r"[^a-z0-9 ]", " ", (name or "").lower())
+    return {t for t in cleaned.split() if t and t not in _CORP_STOP}
+
+
+def _resolve_cik(company: str):
+    """Resolve a typed company name OR ticker to a SEC CIK, robustly:
+    1. exact ticker/title hit; 2. brand alias -> ticker; 3. normalized token match
+    (handles 'Microsoft Corporation' vs SEC 'MICROSOFT CORP' and suffix/punctuation drift).
+    Raises on an EDGAR outage; returns None for a genuine not-a-public-filer."""
+    global _EDGAR_CIK_MAP, _EDGAR_TITLE_TOKENS
+    q = (company or "").strip().lower()
+    if not q:
+        return None
+    if _EDGAR_CIK_MAP is None:
+        r = _get("https://www.sec.gov/files/company_tickers.json", timeout=15)
+        r.raise_for_status()   # outage -> raise (propagates to caller as 'unavailable')
+        m, toks = {}, []
+        for row in r.json().values():
+            cik = row.get("cik_str")
+            ticker = str(row.get("ticker", "")).lower()
+            title = str(row.get("title", "")).lower()
+            if ticker:
+                m[ticker] = cik
+            if title:
+                m[title] = cik
+                toks.append((_norm_tokens(title), cik))
+        _EDGAR_CIK_MAP, _EDGAR_TITLE_TOKENS = m, toks
+    # 1. exact ticker or full-title match
+    if q in _EDGAR_CIK_MAP:
+        return _EDGAR_CIK_MAP[q]
+    # 2. brand alias -> ticker
+    alias = _BRAND_TICKER_ALIASES.get(q)
+    if alias and alias in _EDGAR_CIK_MAP:
+        return _EDGAR_CIK_MAP[alias]
+    # 3. normalized token match: prefer an exact token-set equality, else a clean subset match
+    qt = _norm_tokens(q)
+    if qt:
+        subset_hit = None
+        for tset, cik in _EDGAR_TITLE_TOKENS:
+            if tset == qt:
+                return cik                          # best: same significant tokens
+            if subset_hit is None and tset and (tset <= qt or qt <= tset):
+                subset_hit = cik                    # fallback: one name contains the other
+        if subset_hit is not None:
+            return subset_hit
+    return None
 
 
 def _edgar_company_facts(company: str) -> dict | None:
@@ -468,23 +624,7 @@ def _edgar_company_facts(company: str) -> dict | None:
     Returns None for a genuine NOT-FOUND (the name isn't a public SEC filer) — a clean negative.
     RAISES on a real source outage (network error / 5xx) so the caller can tell "no such filer"
     apart from "EDGAR is down"."""
-    global _EDGAR_CIK_MAP
-    q = (company or "").strip().lower()
-    if not q:
-        return None
-    if _EDGAR_CIK_MAP is None:
-        r = _get("https://www.sec.gov/files/company_tickers.json", timeout=15)
-        r.raise_for_status()   # outage -> raise (propagates to caller as 'unavailable')
-        m = {}
-        for row in r.json().values():
-            m[str(row.get("ticker", "")).lower()] = row.get("cik_str")
-            m[str(row.get("title", "")).lower()] = row.get("cik_str")
-        _EDGAR_CIK_MAP = m
-    cik = _EDGAR_CIK_MAP.get(q)
-    if cik is None:                                 # loose contains-match on company title
-        for title, c in _EDGAR_CIK_MAP.items():
-            if q in title:
-                cik = c; break
+    cik = _resolve_cik(company)
     if cik is None:
         return None                                 # not a public filer -> clean not-found
     r = _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{int(cik):010d}.json", timeout=20)
@@ -646,22 +786,42 @@ def reg_feed_ingest(jurisdiction: str = "US", **_):
 
 
 def risk_score(ratios: dict | None = None, financials: dict | None = None, **_):
-    """Real credit-risk score (0-1) from liquidity / leverage / margin ratios."""
-    r = ratios or (compute_ratios(financials) if financials else None)
-    if not (isinstance(r, dict) and "current_ratio" in r):
+    """Real credit-risk score (0-1) from whatever leverage / liquidity / profitability ratios are
+    available. Works with the statement schema (current_ratio / debt_to_ebitda / ebitda_margin)
+    AND the SEC EDGAR schema (debt_to_equity / equity_ratio / net_margin), scoring on each axis
+    from whichever ratio is present so it never stalls just because one metric is missing."""
+    r = ratios if isinstance(ratios, dict) else None
+    if r is None or not any(k != "source" for k in r):
+        r = compute_ratios(financials) if financials else {}
+    # collect a 0..1 risk contribution (higher = riskier) on each axis, from whatever exists
+    parts: list[float] = []
+    drivers: dict = {}
+    # leverage: prefer debt/ebitda, else debt/equity
+    if r.get("debt_to_ebitda") is not None:
+        parts.append(min(r["debt_to_ebitda"] / 6, 1)); drivers["debt_to_ebitda"] = r["debt_to_ebitda"]
+    elif r.get("debt_to_equity") is not None:
+        parts.append(min(r["debt_to_equity"] / 3, 1)); drivers["debt_to_equity"] = r["debt_to_equity"]
+    # liquidity / solvency: prefer current_ratio, else equity_ratio
+    if r.get("current_ratio") is not None:
+        parts.append(1 - min(r["current_ratio"] / 2, 1)); drivers["current_ratio"] = r["current_ratio"]
+    elif r.get("equity_ratio") is not None:
+        parts.append(1 - min(max(r["equity_ratio"], 0), 1)); drivers["equity_ratio"] = r["equity_ratio"]
+    # profitability: prefer ebitda_margin, else net_margin
+    if r.get("ebitda_margin") is not None:
+        parts.append(1 - min(r["ebitda_margin"] / 0.2, 1)); drivers["ebitda_margin"] = r["ebitda_margin"]
+    elif r.get("net_margin") is not None:
+        parts.append(1 - min(max(r["net_margin"], 0) / 0.15, 1)); drivers["net_margin"] = r["net_margin"]
+
+    if not parts:
         if _live():
             return {"source": "insufficient_input", "live": False,
                     "note": "Provide real financials or ratios to score credit risk; "
                             "no score is fabricated in live mode."}
-        r = {}   # offline/demo: fall back to representative defaults below
-    cr = r.get("current_ratio", 1.0) or 1.0
-    de = r.get("debt_to_ebitda", 3.0) or 3.0
-    em = r.get("ebitda_margin", 0.1) or 0.1
-    score = max(0.0, min(1.0, 0.4 * min(de / 6, 1) + 0.3 * (1 - min(cr / 2, 1))
-                         + 0.3 * (1 - min(em / 0.2, 1))))
+        parts = [0.5]   # offline/demo only
+    score = max(0.0, min(1.0, sum(parts) / len(parts)))
     band = "high" if score > 0.66 else "medium" if score > 0.33 else "low"
     return {"source": "computed", "risk_score": round(score, 3), "risk_band": band,
-            "drivers": {"debt_to_ebitda": de, "current_ratio": cr, "ebitda_margin": em},
+            "drivers": drivers,
             "recommendation": "decline" if band == "high"
             else "review" if band == "medium" else "approve"}
 

@@ -1242,6 +1242,36 @@ function _pgChat(panel){
   }
 }
 
+// Render an agent's final answer as readable text. JSON-format agents return a JSON object as
+// their answer; show it as labelled lines/bullets instead of a raw blob (the raw JSON is still
+// available under "structured payload"). Prose answers are shown as-is.
+function _pgTitle(k){return String(k).replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+function _pgRenderVal(v){
+  if(v===null||v===undefined||v==='') return '<span class="muted">—</span>';
+  if(Array.isArray(v)){
+    if(!v.length) return '<span class="muted">—</span>';
+    return '<ul style="margin:4px 0 8px;padding-left:18px">'+v.map(x=>'<li>'+(x&&typeof x==='object'?_pgRenderVal(x):esc(String(x)))+'</li>').join('')+'</ul>';
+  }
+  if(typeof v==='object'){
+    return Object.entries(v).map(([k,val])=>{
+      const lab='<b>'+esc(_pgTitle(k))+'</b>';
+      return (val&&typeof val==='object')
+        ? '<div style="margin-top:6px">'+lab+':'+_pgRenderVal(val)+'</div>'
+        : '<div>'+lab+': '+esc(String(val))+'</div>';
+    }).join('');
+  }
+  return esc(String(v));
+}
+function _pgHumanize(text){
+  if(text==null) return '(no answer)';
+  let data=null;
+  if(typeof text==='object'){data=text;}
+  else{const t=String(text).trim();
+    if((t[0]==='{'&&t.slice(-1)==='}')||(t[0]==='['&&t.slice(-1)===']')){try{data=JSON.parse(t);}catch(e){data=null;}}}
+  if(data==null) return esc(String(text)).replace(/\n/g,'<br>');
+  return _pgRenderVal(data);
+}
+
 function _pgEvent(ev,ui){
   if(ev.type==='start'){
     ui.trace.appendChild(el(`<div class="pg-status" style="background:#eef2f9;color:#475569;border-color:#e2e8f2"><b>${esc(ev.agent)}</b> · mode ${esc(ev.mode)} · tools: ${esc((ev.allowed_tools||[]).join(', ')||'none')}</div>`));
@@ -1254,7 +1284,7 @@ function _pgEvent(ev,ui){
   else if(ev.type==='status'){ui.trace.appendChild(el(`<div class="pg-status">⚠ ${esc(ev.text)}</div>`));}
   else if(ev.type==='error'){ui.trace.appendChild(el(`<div class="pg-err">✗ ${esc(ev.text)}</div>`));}
   else if(ev.type==='final'){
-    if(!ui.bub.textContent.trim())ui.bub.textContent=ev.text||'(no answer)';
+    ui.bub.innerHTML=_pgHumanize(ev.text);
     const r=ev.risk_level||'low';
     ui.meta.innerHTML=`<span class="pg-pill ${esc(ev.mode)}">${esc(ev.mode)}</span><span class="pg-pill ${esc(r)}">risk ${esc(r)}</span><span class="pg-pill">${esc(ev.status)}</span><span class="pg-pill">run ${esc(ev.run_id)}</span>`;
     if(ev.structured!=null){ui.meta.appendChild(el(`<details style="width:100%"><summary class="muted small" style="cursor:pointer">structured payload</summary><pre style="background:#0d1b2a;color:#d6e2f2;padding:9px;border-radius:7px;overflow:auto;max-height:240px;font-size:11.5px">${esc(JSON.stringify(ev.structured,null,2))}</pre></details>`));}

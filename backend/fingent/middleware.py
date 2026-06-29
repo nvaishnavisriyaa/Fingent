@@ -45,8 +45,11 @@ _INJECTION_SIGNATURES = [
     r"grant (yourself|me) ",
     r"you are now",
     r"bypass (the )?(review|guardrail|policy)",
-    r"exfiltrat|leak the|send the .* to ",
-    r"(email|wire|transfer) .* to \S+@\S+",
+    r"exfiltrat|leak the",
+    # Data-exfil INSTRUCTION: an action verb followed (within a few words) by "to <email>".
+    # Bounded so it only matches an actual imperative ("email the report to x@y.com"), not
+    # legitimate contact data ("email: shailesh@zoho.com") flattened from a tool result.
+    r"\b(send|forward|e-?mail|wire|transfer|deliver)\b(?:\s+\S+){0,5}\s+to\s+\S+@\S+",
     r"system prompt",
 ]
 
@@ -68,10 +71,21 @@ class HumanReviewRequired(Exception):
         super().__init__("human review required")
 
 
-def redact_pii(text: str):
+# Soft contact identifiers an agent MAY be permitted to return unredacted (its whole purpose,
+# e.g. contact resolution). Anything NOT in this set (ssn, credit_card, iban, account, passport)
+# is a hard identifier and is ALWAYS redacted, no matter what an agent's policy requests.
+_ALLOWABLE_PII = {"email", "phone"}
+
+
+def redact_pii(text: str, allow=()):
+    """Redact PII patterns from `text`. `allow` lists PII kinds to leave intact — but only soft
+    contact identifiers (email/phone) can ever be allowed; hard identifiers are always redacted."""
+    allow = {k for k in allow if k in _ALLOWABLE_PII}
     found = []
     out = text
     for kind, pat in _PII_PATTERNS.items():
+        if kind in allow:
+            continue
         if pat.search(out):
             found.append(kind)
             out = pat.sub(f"[REDACTED_{kind.upper()}]", out)
@@ -102,15 +116,16 @@ def scan_untrusted(payload, label: str) -> list[str]:
     return detect_injection(_flatten(payload))
 
 
-def redact_obj(obj):
+def redact_obj(obj, allow=()):
     """Recursively redact PII from any nested structure, returning a clean copy.
-    Used to scrub agent results BEFORE they are persisted to the blackboard / returned."""
+    Used to scrub agent results BEFORE they are persisted to the blackboard / returned.
+    `allow` lets an agent keep soft contact identifiers (email/phone) intact when that is its job."""
     if isinstance(obj, str):
-        return redact_pii(obj)[0]
+        return redact_pii(obj, allow)[0]
     if isinstance(obj, dict):
-        return {k: redact_obj(v) for k, v in obj.items()}
+        return {k: redact_obj(v, allow) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return [redact_obj(v) for v in obj]
+        return [redact_obj(v, allow) for v in obj]
     return obj
 
 

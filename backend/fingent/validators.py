@@ -14,6 +14,7 @@ Validators (§3).
 """
 from __future__ import annotations
 
+from .middleware import _ALLOWABLE_PII
 from .registry import ToolRegistry
 from .schemas import AgentSpec, AgentTemplate, ToolKind, ValidationVerdict
 
@@ -141,11 +142,25 @@ def validate_spec(candidate: dict, template: AgentTemplate | None, registry: Too
             warnings.append("output_review_required floored ON per template policy")
         if td.input_pii_check:
             candidate["guardrails"]["input_pii_check"] = True
+        # inherit the template's allowed contact-PII so e.g. the contact template returns emails
+        if td.pii_allow:
+            merged = set(candidate["guardrails"].get("pii_allow") or []) | set(td.pii_allow)
+            candidate["guardrails"]["pii_allow"] = sorted(merged)
         for cap in ("max_steps", "max_tokens", "timeout_seconds"):
             req = candidate["guardrails"].get(cap)
             ceiling = getattr(td, cap)
             if req is None or req > ceiling:
                 candidate["guardrails"][cap] = ceiling
+
+    # pii_allow may only ever contain SOFT contact identifiers (email/phone). A spec — including
+    # one proposed by the LLM or smuggled via free text — can never authorize exposing hard
+    # identifiers (ssn, card, iban, account, passport): the disposer strips them here.
+    requested_allow = candidate["guardrails"].get("pii_allow") or []
+    safe_allow = sorted({k for k in requested_allow if k in _ALLOWABLE_PII})
+    dropped = sorted({k for k in requested_allow if k not in _ALLOWABLE_PII})
+    if dropped:
+        stripped.append(f"pii_allow: {dropped} (hard identifiers are always redacted)")
+    candidate["guardrails"]["pii_allow"] = safe_allow
 
     try:
         spec = AgentSpec.model_validate(candidate)

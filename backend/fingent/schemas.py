@@ -76,6 +76,11 @@ class GuardrailPolicy(BaseModel):
     input_pii_check: bool = True
     injection_check: bool = True           # MUST be on for any agent with web/MCP tools
     output_review_required: bool = False   # route output through compliance overseer
+    # Contact PII the agent is ALLOWED to return/persist unredacted because surfacing it IS its
+    # job (e.g. a contact-resolution agent returning a verified email). Only soft contact
+    # identifiers may be allowed; hard identifiers (ssn, card, iban, account, passport) are
+    # ALWAYS redacted regardless of this list. Default [] = redact everything (legacy behavior).
+    pii_allow: list[str] = Field(default_factory=list)
     max_steps: int = 12
     max_tokens: int = 100_000
     timeout_seconds: int = 120

@@ -117,3 +117,35 @@ def test_ocr_extract_tool_surfaces_tables_and_forms():
         assert "tables" in r["fields"] and "form_fields" in r["fields"]
     finally:
         os.unlink(path)
+
+
+def test_underwriting_chain_accepts_edgar_schema():
+    """Regression: company_financials (SEC EDGAR schema) must flow into compute_ratios and
+    risk_score. Previously these required a different schema (current_assets/ebitda/total_debt)
+    so the credit-underwriting chain always failed with real SEC data."""
+    edgar = {"source": "live:SEC EDGAR", "found": True, "revenue": 281_724_000_000,
+             "net_income": 101_832_000_000, "total_assets": 533_898_000_000,
+             "stockholders_equity": 296_000_000_000, "total_liabilities": 237_898_000_000}
+    ratios = t.compute_ratios(edgar)
+    assert "error" not in ratios
+    assert ratios["net_margin"] > 0 and ratios["debt_to_equity"] > 0
+    rs = t.risk_score(financials=edgar)
+    assert rs["source"] == "computed"
+    assert 0.0 <= rs["risk_score"] <= 1.0
+    assert rs["recommendation"] in ("approve", "review", "decline")
+
+
+def test_compute_ratios_still_handles_statement_schema():
+    """The original statement schema (current_assets/total_debt/ebitda) keeps working."""
+    f = {"current_assets": 200, "current_liabilities": 100, "total_debt": 300,
+         "ebitda": 150, "revenue": 1000}
+    r = t.compute_ratios(f)
+    assert r["current_ratio"] == 2.0 and r["debt_to_ebitda"] == 2.0 and r["ebitda_margin"] == 0.15
+
+
+def test_resolve_contact_domain_drops_corporate_suffix():
+    """Regression: 'Zoho Corporation' must derive 'zoho.com', not 'zohocorporation.com'."""
+    r = t.resolve_contact(name="Shailesh Davey", company="Zoho Corporation")
+    assert r["company_domain"] == "zoho.com"
+    r2 = t.resolve_contact(name="Jane Doe", company="Microsoft Corporation")
+    assert r2["company_domain"] == "microsoft.com"

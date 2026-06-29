@@ -137,11 +137,12 @@ class AgentRuntime:
         rec = RunRecord(
             id=run_id, tenant_id=tenant_id, agent=spec.name, trace_id=trace.trace_id, mode=mode,
             input=self._redact_for_storage(spec, user_input), status=status,
-            steps=self._redact_steps_for_storage(spec, steps), output=output,
+            steps=self._redact_steps_for_storage(spec, steps),
+            output=self._redact_for_storage(spec, output),
             risk_score=score, risk_level=level, risk_flags=flags, pending_action=pending,
             duration_ms=round((time.monotonic() - start) * 1000, 2), ts=time.time(),
         ).model_dump()
-        self.store.save_run(rec)
+        self._persist_run(spec, rec)   # store with PII fully stripped (no pii_allow at rest)
         self.store.audit(tenant_id, spec.name, "run", run_id,
                          {"status": status, "risk": level, "mode": mode})
         return rec
@@ -324,9 +325,10 @@ class AgentRuntime:
                 tracer.metrics["guardrail_trips"] += 1
                 flags.append(f"injection_blocked:{tool}")
                 result = {"_quarantined": True, "tool": tool, "signatures": hits}
-        # redact PII from tool output before it is recorded/returned
+        # redact PII from tool output before it is recorded/returned (an agent may be permitted
+        # to keep soft contact identifiers, e.g. a contact-resolution agent returning an email)
         if spec.guardrails.input_pii_check:
-            result = redact_obj(result)
+            result = redact_obj(result, allow=getattr(spec.guardrails, "pii_allow", ()))
 
         # HONEST DEGRADATION: a tool whose live source was unreachable returns source="unavailable".
         # Flag it so "the feed was down" is never silently conflated with a real negative result
@@ -494,7 +496,8 @@ class AgentRuntime:
         return {
             "edgar_search": {"query": company}, "news_monitor": {"company": company},
             "enrich_company": {"company": company}, "find_persona": {"company": company},
-            "resolve_contact": {"name": person}, "web_search": {"query": company},
+            "resolve_contact": {"name": person, "company": company},
+            "web_search": {"query": company},
             "ofac_screen": {"name": person}, "adverse_media_search": {"name": person},
             "pep_check": {"name": person}, "ocr_extract": {"document": "financials.pdf"},
             "parse_financials": {"text": text}, "compute_ratios": {"financials": financials},
@@ -596,7 +599,7 @@ class AgentRuntime:
         identifiers. Gated on the same input_pii_check flag as tool-output redaction."""
         if not getattr(spec.guardrails, "input_pii_check", True):
             return value
-        return redact_obj(value)
+        return redact_obj(value, allow=getattr(spec.guardrails, "pii_allow", ()))
 
     @staticmethod
     def _redact_steps_for_storage(spec, steps):
@@ -604,15 +607,40 @@ class AgentRuntime:
         raw identifiers the agent passed to a tool, e.g. identity_verify(id_number=...))."""
         if not getattr(spec.guardrails, "input_pii_check", True):
             return steps
+        allow = getattr(spec.guardrails, "pii_allow", ())
         out = []
         for s in steps:
             d = s.model_dump()
             if d.get("tool_input") is not None:
-                d["tool_input"] = redact_obj(d["tool_input"])
+                d["tool_input"] = redact_obj(d["tool_input"], allow=allow)
             if d.get("tool_output") is not None:
-                d["tool_output"] = redact_obj(d["tool_output"])
+                d["tool_output"] = redact_obj(d["tool_output"], allow=allow)
             out.append(RunStep(**d))
         return out
+
+    def _persist_run(self, spec, rec: dict) -> None:
+        """Save a run with ALL PII stripped — independent of pii_allow. An agent may RETURN contact
+        identifiers to the caller (pii_allow), but the persisted RunRecord / trace / compliance dump
+        must never retain raw emails, phones, SSNs, etc. So storage redacts with NO allow-list: the
+        contact email the user sees in the response is NOT kept in the database."""
+        if not getattr(spec.guardrails, "input_pii_check", True):
+            self.store.save_run(rec)
+            return
+        stored = dict(rec)
+        stored["input"] = redact_obj(rec.get("input"))           # no allow -> redact everything
+        stored["output"] = redact_obj(rec.get("output"))
+        if rec.get("pending_action") is not None:
+            stored["pending_action"] = redact_obj(rec.get("pending_action"))
+        red_steps = []
+        for s in rec.get("steps", []):
+            s2 = dict(s)
+            if s2.get("tool_input") is not None:
+                s2["tool_input"] = redact_obj(s2["tool_input"])
+            if s2.get("tool_output") is not None:
+                s2["tool_output"] = redact_obj(s2["tool_output"])
+            red_steps.append(s2)
+        stored["steps"] = red_steps
+        self.store.save_run(stored)
 
     @staticmethod
     def _needs_human(spec) -> bool:
@@ -812,18 +840,19 @@ class AgentRuntime:
         td = trace.to_dict(); td.update({"run_id": run_id, "agent": spec.name,
                                          "executed": [spec.name], "status": status})
         self.store.save_trace(trace.trace_id, tenant_id, td)
+        display_structured = self._redact_for_storage(spec, structured)
         rec = RunRecord(
             id=run_id, tenant_id=tenant_id, agent=spec.name, trace_id=trace.trace_id, mode=mode,
             input=self._redact_for_storage(spec, {"chat": user_text}), status=status,
-            steps=self._redact_steps_for_storage(spec, steps), output=structured,
+            steps=self._redact_steps_for_storage(spec, steps), output=display_structured,
             risk_score=score, risk_level=level, risk_flags=flags, pending_action=pending,
             duration_ms=round((time.monotonic() - start) * 1000, 2), ts=time.time(),
         ).model_dump()
-        self.store.save_run(rec)
+        self._persist_run(spec, rec)   # store with PII fully stripped (no pii_allow at rest)
         self.store.audit(tenant_id, spec.name, "chat", run_id,
                          {"status": status, "risk": level, "mode": mode})
         yield {"type": "final", "text": final_text or "(no answer produced)",
-               "structured": structured, "run_id": run_id, "status": status,
+               "structured": display_structured, "run_id": run_id, "status": status,
                "risk_level": level, "trace_id": trace.trace_id, "mode": mode}
         yield {"type": "done"}
 

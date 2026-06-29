@@ -27,3 +27,20 @@ def test_run_input_and_steps_are_redacted_at_rest():
     # and the stored run fetched back from the store is also clean
     stored = json.dumps(fp.store.get_run("acme", rec["id"]))
     assert SSN not in stored and EMAIL not in stored
+
+
+def test_contact_agent_shows_email_but_does_not_store_it():
+    """A contact agent (pii_allow=email/phone) RETURNS the email to the caller, but the persisted
+    RunRecord must still be redacted — display and storage are decoupled."""
+    fp = Fingent()
+    fp.create_agent(CreateAgentRequest(template="contact", answers={"name": "ct"},
+                                       tenant_id="acme"), auto_provision=True)
+    fp.deploy_agent("acme", "ct", actor="t")
+    rec = fp.run_task("acme", "ct", {"name": "John Doe", "company": "Acme"})
+    returned = json.dumps(rec)
+    stored = json.dumps(fp.store.get_run("acme", rec["id"]))
+    # the caller SEES the resolved email (pii_allow honored in the response)
+    assert "john.doe@acme.com" in returned
+    # but the database does NOT retain the raw email (always redacted at rest)
+    assert "john.doe@acme.com" not in stored
+    assert "[REDACTED_EMAIL]" in stored

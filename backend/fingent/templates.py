@@ -88,6 +88,9 @@ CATALOG: list[AgentTemplate] = [
         parameters=[_name_param()],
         default_depends_on=[Dependency(agent="persona_decision_maker", type=HARD,
                                        reason="needs personas to resolve contacts for")],
+        # delivering contact details IS this agent's job — return email/phone unredacted
+        # (hard identifiers like SSN/card stay always-redacted regardless)
+        default_guardrails=GuardrailPolicy(pii_allow=["email", "phone"]),
         grantable_tools=["resolve_contact", "web_search"],
     ),
     AgentTemplate(
