@@ -319,7 +319,8 @@ class Planner:
         supervised kernel — there is no separate deterministic path."""
         return self.run_supervised(tenant_id, specs, inputs)
 
-    def run_supervised(self, tenant_id: str, specs: list, inputs: dict | None = None) -> dict:
+    def run_supervised(self, tenant_id: str, specs: list, inputs: dict | None = None,
+                       strict: bool = False) -> dict:
         if self.runtime is None:
             raise RuntimeError("Planner.run_supervised requires an AgentRuntime")
         inputs = inputs or {}
@@ -331,7 +332,9 @@ class Planner:
 
         # PLAN: the model decomposes the goal into a runtime task graph (or the dependency
         # toposort when no model is configured). This is the real "supervisor that plans".
-        graph = self.plan_graph(specs, goal=goal, inputs=inputs)
+        # strict=True keeps EVERY selected agent in the plan (it may reorder/decompose but never
+        # drop one) — used when the caller wants the full pipeline to run deterministically.
+        graph = self.plan_graph(specs, goal=goal, inputs=inputs, strict=strict)
 
         executed, agents, hitl_pause, error = [], [], None, None
         final_prose, final_agent = None, None
@@ -357,11 +360,18 @@ class Planner:
                     if val is not None:
                         ctx[prior] = val
                         ctx.update(self._hoist(val))
-                # one kernel: the sub-agent runs the SAME governed loop, with its decomposed subtask
-                res = self.runtime.run_node(spec, ctx, tenant_id, tracer, task=step.task or None)
+                # one kernel: the sub-agent runs the SAME governed loop with its decomposed subtask.
+                # A single sub-agent must NEVER crash the whole supervised run — capture any failure
+                # as a failed node and carry on, so the pipeline still reaches synthesis.
+                try:
+                    res = self.runtime.run_node(spec, ctx, tenant_id, tracer, task=step.task or None)
+                except Exception as e:  # noqa: BLE001
+                    res = {"agent": spec.name, "output": {"error": f"sub-agent failed: {e}"},
+                           "status": "failed", "mode": "llm", "steps": [],
+                           "flags": ["subagent_exception"]}
                 agents.append({"agent": step.agent, "status": res["status"],
                                "output": res["output"], "mode": res["mode"],
-                               "steps": len(res["steps"]), "flags": res.get("flags", []),
+                               "steps": len(res.get("steps", [])), "flags": res.get("flags", []),
                                "task": step.task, "reason": step.reason})
                 executed.append(step.agent)
                 wkey = spec.writes[0] if spec.writes else f"{spec.name}.out"
@@ -373,19 +383,25 @@ class Planner:
                                 "result": self._digest(res["output"])})
                 if self._is_synth(spec):
                     final_prose, final_agent = res["output"], step.agent
-                if res["status"] == "needs_review":
+                # Consolidate governance signals. In STRICT (full-pipeline) mode the supervisor keeps
+                # gathering so it can present ONE complete picture and always reach synthesis; in
+                # non-strict mode it preserves the halt-on-review/block semantics.
+                if res["status"] == "needs_review" and hitl_pause is None:
                     hitl_pause = res.get("pending_action") or {
                         "agent": step.agent, "reason": "agent requires human review",
                         "flags": res.get("flags", [])}
-                    break
-                if res["status"] == "blocked":
+                    if not strict:
+                        break
+                if res["status"] == "blocked" and error is None:
                     error = {"agent": step.agent, "type": "blocked",
                              "detail": "guardrail/compliance blocked the sub-agent",
                              "flags": res.get("flags", [])}
-                    break
-                # ADAPT: let the intermediate results revise the remaining (LLM-planned) tail
-                if (graph.mode == "llm" and provider.enabled and replans < _MAX_REPLANS
-                        and i < len(graph.steps) - 1):
+                    if not strict:
+                        break
+                # ADAPT: let intermediate results revise the remaining (LLM-planned) tail. Disabled
+                # under strict, where the caller wants the fixed full pipeline to run end to end.
+                if (not strict and graph.mode == "llm" and provider.enabled
+                        and replans < _MAX_REPLANS and i < len(graph.steps) - 1):
                     revised = self._maybe_replan(provider, graph.goal, specs, graph, i,
                                                  digests, executed)
                     if revised is not None:
@@ -396,7 +412,37 @@ class Planner:
                         replans += 1
                 i += 1
 
-        if final_prose is None and agents:                     # no synthesis spec: last wins
+        # FINALIZE: always end with a synthesized recommendation. If no synthesis agent ran (it
+        # wasn't in the plan, or an early halt skipped it), run it now over the shared blackboard so
+        # the supervised run never ends without an actionable answer.
+        if final_prose is None:
+            synth_spec = next((s for s in specs
+                               if self._is_synth(s) and s.name not in executed), None)
+            if synth_spec is not None:
+                ctx = dict(inputs)
+                for prior in synth_spec.reads:
+                    try:
+                        val = blackboard.read(prior, synth_spec.name,
+                                              synth_spec.security.memory_read)
+                    except Exception:  # noqa: BLE001
+                        val = None
+                    if val is not None:
+                        ctx[prior] = val
+                        ctx.update(self._hoist(val))
+                try:
+                    res = self.runtime.run_node(synth_spec, ctx, tenant_id, tracer,
+                                                task=graph.goal or None)
+                    agents.append({"agent": synth_spec.name, "status": res["status"],
+                                   "output": res["output"], "mode": res["mode"],
+                                   "steps": len(res.get("steps", [])),
+                                   "flags": res.get("flags", []),
+                                   "task": graph.goal, "reason": "finalizer: synthesize the run"})
+                    executed.append(synth_spec.name)
+                    final_prose, final_agent = res["output"], synth_spec.name
+                except Exception:  # noqa: BLE001
+                    pass
+
+        if final_prose is None and agents:                     # still nothing: last agent wins
             final_prose, final_agent = agents[-1]["output"], agents[-1]["agent"]
 
         trace = tracer.finalize()

@@ -1176,6 +1176,15 @@ function _pgStyle(){
   .pg-node{display:flex;align-items:center;gap:10px;border:1px solid #e2e8f2;border-radius:10px;padding:8px 11px;background:#fff}
   .pg-node .n{width:22px;height:22px;border-radius:50%;background:#0b2545;color:#fff;display:grid;place-items:center;font-size:11px;flex:none}
   .pg-node .arrow{color:#94a3b8;text-align:center;font-size:13px}
+  .pg-step{border:1px solid #e2e8f2;border-radius:10px;background:#fff;overflow:hidden}
+  .pg-step summary{list-style:none;cursor:pointer;padding:9px 11px}
+  .pg-step summary::-webkit-details-marker{display:none}
+  .pg-step summary:before{content:"+";width:18px;height:18px;border-radius:50%;background:#eef2f9;color:#475569;display:grid;place-items:center;font-weight:800;font-size:12px;flex:none}
+  .pg-step[open] summary:before{content:"-";background:#e6f6ee;color:#0a7d54}
+  .pg-step-body{border-top:1px solid #eef2f8;padding:10px 12px;background:#fafcff}
+  .pg-step-meta{display:grid;grid-template-columns:92px 1fr;gap:5px 10px;font-size:12px;margin-bottom:8px}
+  .pg-step-meta b{color:#64748b;font-weight:700}
+  .pg-step-output{border:1px solid #e2e8f2;border-radius:8px;background:#fff;padding:9px 10px;font-size:12.5px;line-height:1.55;max-height:340px;overflow:auto}
   `;document.head.appendChild(st);
 }
 function _pgHeaders(){const h={'Content-Type':'application/json','X-Tenant':tenant()};const t=authToken();if(t)h['Authorization']='Bearer '+t;return h;}
@@ -1206,7 +1215,7 @@ async function renderPlayground(m){
   card.querySelectorAll('.pg-tab').forEach(b=>b.onclick=()=>{STATE.pgTab=b.dataset.tab;renderPlayground(m);});
   const panel=card.querySelector('#pgPanel');
   if(STATE.pgTab==='chat')_pgChat(panel);
-  else if(STATE.pgTab==='workflow')_pgWorkflow(panel);
+  else if(STATE.pgTab==='workflow')_pgWorkflow(panel, agents);
   else _pgRaw(panel);
 }
 
@@ -1319,12 +1328,72 @@ function _pgWorkflow(panel){
   card.querySelector('#wfRun').onclick=async()=>{
     const out=card.querySelector('#wfOut');out.innerHTML='<div class="note info">Dispatching the supervisor…</div>';
     let inputs={};try{inputs=JSON.parse(card.querySelector('#wfInput').value||'{}');}catch(_){out.innerHTML='<div class="note bad">Input must be valid JSON.</div>';return;}
-    try{const res=await api('/run',{method:'POST',body:JSON.stringify({supervised:true,tier:+card.querySelector('#wfTier').value,inputs})});
+    try{const res=await api('/run',{method:'POST',body:JSON.stringify({supervised:true,strict:true,tier:+card.querySelector('#wfTier').value,inputs})});
       out.innerHTML=_wfHtml(res);
     }catch(e){out.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
   };
 }
-function _wfHtml(res){
+function _pgWorkflow(panel, agents=[]){
+  panel.innerHTML='';
+  const card=el(`<div>
+    <div class="note info">A supervised run dispatches the selected agents in dependency order. Select only the agents that belong to this workflow so stale test agents do not pollute the result.</div>
+    <div class="row" style="gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <label class="fld" style="margin:0">Tier</label>
+      <select id="wfTier"><option value="1">Tier 1</option><option value="2">Tier 2</option><option value="3">Tier 3</option></select>
+      <button class="btn sm" id="wfPick">Select hackathon workflow</button>
+      <button class="btn sm ghost" id="wfClear">Clear</button>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="wfRun">${I.play} Run workflow</button>
+    </div>
+    <label class="fld">Agents in this workflow</label>
+    <div id="wfAgents" class="card" style="padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;background:#fafcff"></div>
+    <label class="fld">Task input (JSON)</label>
+    <textarea id="wfInput" rows="3">{ "company": "Stripe" }</textarea>
+    <div id="wfOut" style="margin-top:14px"></div></div>`);
+  panel.appendChild(card);
+
+  const canonical=['planner','signal_trigger','icp_matching','enrichment_validation','persona_decision_maker','contact','synthesis'];
+  const tierSel=card.querySelector('#wfTier'), list=card.querySelector('#wfAgents');
+  const isStale=a=>/^qa_|^custom_|^build_an_agent/i.test(a.name||'');
+  const pickRecommended=()=>{
+    const picked=new Set();
+    for(const tpl of canonical){
+      const exact=agents.find(a=>Number(a.tier)===1&&a.name===tpl);
+      const clean=agents.find(a=>Number(a.tier)===1&&(a.template===tpl||a.name===tpl)&&!isStale(a));
+      const any=agents.find(a=>Number(a.tier)===1&&(a.template===tpl||a.name===tpl));
+      const hit=exact||clean||any;
+      if(hit)picked.add(hit.name);
+    }
+    list.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=picked.has(cb.value));
+  };
+  const renderChoices=()=>{
+    const tier=+tierSel.value;
+    const rows=agents.filter(a=>Number(a.tier)===tier);
+    if(!rows.length){list.innerHTML='<div class="muted small">No agents in this tier.</div>';return;}
+    list.innerHTML=rows.map(a=>`<label style="display:flex;gap:8px;align-items:flex-start;border:1px solid #e2e8f2;border-radius:8px;background:#fff;padding:8px;cursor:pointer">
+      <input type="checkbox" value="${esc(a.name)}" style="width:auto;margin-top:3px">
+      <span><b>${esc(a.name)}</b><span class="muted small"> - ${esc(a.template||'custom')}</span><br>
+      <span class="muted xs">${esc((a.tools||[]).slice(0,4).join(', ')||'no tools')}</span></span>
+    </label>`).join('');
+    if(tier===1)pickRecommended();
+  };
+  tierSel.onchange=renderChoices;
+  card.querySelector('#wfPick').onclick=pickRecommended;
+  card.querySelector('#wfClear').onclick=()=>list.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=false);
+  renderChoices();
+
+  card.querySelector('#wfRun').onclick=async()=>{
+    const out=card.querySelector('#wfOut');out.innerHTML='<div class="note info">Dispatching the supervisor...</div>';
+    let inputs={};try{inputs=JSON.parse(card.querySelector('#wfInput').value||'{}');}catch(_){out.innerHTML='<div class="note bad">Input must be valid JSON.</div>';return;}
+    const selected=[...list.querySelectorAll('input[type=checkbox]:checked')].map(cb=>cb.value);
+    if(!selected.length){out.innerHTML='<div class="note bad">Select the agents you want in this workflow first.</div>';return;}
+    try{const res=await api('/run',{method:'POST',body:JSON.stringify({supervised:true,strict:true,agents:selected,inputs})});
+      out.innerHTML=_wfHtml(res);
+    }catch(e){out.innerHTML=`<div class="note bad">${esc(e.message||e)}</div>`;}
+  };
+}
+
+function _wfHtmlLegacy(res){
   if(res&&res.ok===false)return `<div class="note bad">${esc(res.message||'no agents matched')}</div>`;
   const ags=res.agents||[];
   const flow=ags.map((a,i)=>`${i?'<div class="arrow">↓</div>':''}<div class="pg-node"><div class="n">${i+1}</div>
@@ -1334,6 +1403,31 @@ function _wfHtml(res){
   const prose=(typeof fp==='string')?esc(fp):`<pre style="background:#0d1b2a;color:#d6e2f2;padding:11px;border-radius:8px;overflow:auto;max-height:300px;font-size:12px">${esc(JSON.stringify(fp,null,2))}</pre>`;
   return `<div class="pg-flow">${flow||'<div class="muted small">No agents executed.</div>'}</div>
     <div class="card pad" style="margin-top:14px;background:#fafcff"><h3 style="margin-top:0">🧩 Synthesis · ${esc(res.final_agent||'—')}</h3><div class="pg-bub">${prose}</div></div>`;
+}
+
+function _wfHtml(res){
+  if(res&&res.ok===false)return `<div class="note bad">${esc(res.message||'no agents matched')}</div>`;
+  const ags=res.agents||[];
+  const flow=ags.map((a,i)=>{
+    const tone=a.status==='success'?'low':(a.status==='blocked'?'high':'medium');
+    const flags=(a.flags||[]).map(f=>`<span class="pg-pill medium">${esc(f)}</span>`).join(' ');
+    const task=a.task?`<div><b>Task</b><span>${esc(a.task)}</span></div>`:'';
+    const reason=a.reason?`<div><b>Reason</b><span>${esc(a.reason)}</span></div>`:'';
+    return `${i?'<div class="arrow">&#8595;</div>':''}<details class="pg-step" open>
+      <summary class="pg-node"><div class="n">${i+1}</div>
+        <div style="flex:1"><b>${esc(a.agent)}</b> <span class="muted small">- ${a.steps} step${a.steps===1?'':'s'}</span></div>
+        <span class="pg-pill ${esc(a.mode)}">${esc(a.mode)}</span><span class="pg-pill ${tone}">${esc(a.status)}</span></summary>
+      <div class="pg-step-body">
+        <div class="pg-step-meta">
+          ${task}${reason}
+          ${flags?`<div><b>Flags</b><span>${flags}</span></div>`:''}
+        </div>
+        <div class="pg-step-output">${_pgHumanize(a.output)}</div>
+      </div>
+    </details>`;
+  }).join('');
+  return `<div class="pg-flow">${flow||'<div class="muted small">No agents executed.</div>'}</div>
+    <div class="card pad" style="margin-top:14px;background:#fafcff"><h3 style="margin-top:0">Synthesis - ${esc(res.final_agent||'-')}</h3><div class="pg-bub">${_pgHumanize(res.final_prose)}</div></div>`;
 }
 
 function _pgRaw(panel){

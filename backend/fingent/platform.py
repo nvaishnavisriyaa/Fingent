@@ -196,9 +196,12 @@ class Fingent:
         return self.planner.run(tenant_id, specs, inputs)
 
     def run_supervised(self, tenant_id: str, agent_names: list[str] | None = None,
-                       tier: int | None = None, inputs: dict | None = None) -> dict:
+                       tier: int | None = None, inputs: dict | None = None,
+                       strict: bool = False) -> dict:
         """Supervised multi-agent run where every sub-agent is a REAL agent (LLM runtime)
-        and the Synthesis agent writes the final prose. Select sub-agents by name or tier."""
+        and the Synthesis agent writes the final prose. Select sub-agents by name or tier.
+        strict=True runs the FULL selected pipeline (the planner orders/decomposes but drops
+        nothing) — use it when you want every chosen step to execute deterministically."""
         all_specs = self.store.list_specs(tenant_id)
         if agent_names:
             specs = [s for s in all_specs if s.name in agent_names]
@@ -208,7 +211,7 @@ class Fingent:
             specs = all_specs
         if not specs:
             return {"ok": False, "message": "no agents matched for supervised run"}
-        return self.planner.run_supervised(tenant_id, specs, inputs)
+        return self.planner.run_supervised(tenant_id, specs, inputs, strict=strict)
 
     # ----- admin / MCP --------------------------------------------------- #
     def register_mcp(self, server, actor: str = "admin", connect: bool | None = None) -> list[str]:

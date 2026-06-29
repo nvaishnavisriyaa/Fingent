@@ -556,6 +556,7 @@ class RunBody(BaseModel):
     tier: int | None = None
     inputs: dict = {}
     supervised: bool = False   # True -> sub-agents run the real LLM runtime + Synthesis prose
+    strict: bool = False       # True -> the planner runs the FULL selected pipeline (drops nothing)
 
 
 @app.post("/api/run")
@@ -564,7 +565,7 @@ def run(body: RunBody, x_tenant: str | None = Header(default=None),
     ctx = _authz(authorization, x_tenant, "invoke")
     if body.supervised:
         return fp.run_supervised(ctx.tenant, agent_names=body.agents or None,
-                                 tier=body.tier, inputs=body.inputs)
+                                 tier=body.tier, inputs=body.inputs, strict=body.strict)
     if body.tier is not None:
         return fp.run_workflow(ctx.tenant, tier=body.tier, inputs=body.inputs)
     return fp.run(ctx.tenant, body.agents, inputs=body.inputs)
